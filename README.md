@@ -1,2 +1,2 @@
 # JSON-Formatter
-just simple JSON Formatter
+Just a simple JSON formatter
