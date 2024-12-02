@@ -4,15 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSON Formatter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
 </head>
 <body>
   <div class="container">
-    <h1>JSON Formatter</h1>
-    <textarea id="json-input" placeholder="Paste your JSON here..."></textarea>
-    <div id="output" class="output"><pre><code id="formatted-json" class="language-json"></code></pre></div>
-    <small class="tip">Tip: Enter valid JSON to see the formatted and highlighted output!</small>
+    <header class="header">
+      <h1>JSON Formatter</h1>
+      <div class="buttons">
+        <button id="copy-btn">Copy</button>
+        <button id="compress-copy-btn">Compress & Copy</button>
+      </div>
+    </header>
+    <div class="main">
+      <textarea id="json-input" placeholder="Paste your JSON here..."></textarea>
+      <div id="output" class="output"><pre><code id="formatted-json" class="language-json"></code></pre></div>
+    </div>
+    <div id="toast" class="toast"></div>
   </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
   <script src="script.js"></script>
