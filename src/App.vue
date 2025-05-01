@@ -33,7 +33,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import * as monaco from 'monaco-editor'
+import loader from '@monaco-editor/loader'
 
 const editor = ref(null)
 let monacoEditor = null
@@ -54,8 +54,9 @@ const showToast = (message, type = 'success') => {
   }, 3000)
 }
 
-onMounted(() => {
+onMounted(async () => {
   // Initialize Monaco Editor
+  const monaco = await loader.init()
   monacoEditor = monaco.editor.create(editor.value, {
     value: '{\n  "example": "json"\n}',
     language: 'json',
