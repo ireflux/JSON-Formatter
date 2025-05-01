@@ -9,6 +9,9 @@
         <button @click="copyMinified" class="compress-copy-btn">
           <span class="button-content">Compress & Copy</span>
         </button>
+        <button @click="toggleDiffMode" class="diff-btn" :class="{ active: isDiffMode }">
+          <span class="button-content">{{ isDiffMode ? 'Exit Diff' : 'Compare' }}</span>
+        </button>
       </div>
       <a href="https://github.com/ireflux/JSON-Formatter" target="_blank" class="github-link" title="View on GitHub">
         <svg height="24" width="24" viewBox="0 0 16 16" fill="currentColor">
@@ -37,6 +40,8 @@ import loader from '@monaco-editor/loader'
 
 const editor = ref(null)
 let monacoEditor = null
+let diffEditor = null
+const isDiffMode = ref(false)
 const toast = ref({
   show: false,
   message: '',
@@ -54,10 +59,9 @@ const showToast = (message, type = 'success') => {
   }, 3000)
 }
 
-onMounted(async () => {
-  // Initialize Monaco Editor
+const createEditor = async () => {
   const monaco = await loader.init()
-  monacoEditor = monaco.editor.create(editor.value, {
+  return monaco.editor.create(editor.value, {
     value: '{\n  "example": "json"\n}',
     language: 'json',
     theme: 'vs-dark',
@@ -71,24 +75,117 @@ onMounted(async () => {
     padding: {
       top: 16,
       bottom: 16
+    },
+    multiCursorModifier: 'alt',
+    wordWrap: 'on',
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    tabSize: 2,
+    insertSpaces: true,
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    autoSurround: 'brackets',
+    formatOnPaste: true,
+    formatOnType: true,
+    renderWhitespace: 'none',
+    renderControlCharacters: false,
+    renderIndentGuides: true,
+    renderLineHighlight: 'all',
+    scrollbar: {
+      vertical: 'visible',
+      horizontal: 'visible',
+      useShadows: false,
+      verticalScrollbarSize: 10,
+      horizontalScrollbarSize: 10
     }
   })
+}
 
-  // Add paste event listener
+const createDiffEditor = async () => {
+  const monaco = await loader.init()
+  return monaco.editor.createDiffEditor(editor.value, {
+    originalEditable: true,
+    readOnly: false,
+    automaticLayout: true,
+    theme: 'vs-dark',
+    fontSize: 14,
+    lineHeight: 20,
+    renderSideBySide: true,
+    minimap: {
+      enabled: false
+    },
+    multiCursorModifier: 'alt',
+    wordWrap: 'on',
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
+    tabSize: 2,
+    insertSpaces: true,
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    autoSurround: 'brackets',
+    formatOnPaste: true,
+    formatOnType: true,
+    renderWhitespace: 'none',
+    renderControlCharacters: false,
+    renderIndentGuides: true,
+    renderLineHighlight: 'all',
+    scrollbar: {
+      vertical: 'visible',
+      horizontal: 'visible',
+      useShadows: false,
+      verticalScrollbarSize: 10,
+      horizontalScrollbarSize: 10
+    }
+  })
+}
+
+const toggleDiffMode = async () => {
+  const monaco = await loader.init()
+  if (isDiffMode.value) {
+    // Switch back to normal editor
+    if (diffEditor) {
+      diffEditor.dispose()
+      diffEditor = null
+    }
+    monacoEditor = await createEditor()
+    monacoEditor.onDidPaste(() => {
+      setTimeout(() => {
+        formatJson()
+      }, 100)
+    })
+  } else {
+    // Switch to diff editor
+    let currentValue = '{\n  "example": "json"\n}'
+    if (monacoEditor) {
+      currentValue = monacoEditor.getValue()
+      monacoEditor.dispose()
+      monacoEditor = null
+    }
+    diffEditor = await createDiffEditor()
+    diffEditor.setModel({
+      original: monaco.editor.createModel(currentValue, 'json'),
+      modified: monaco.editor.createModel(currentValue, 'json')
+    })
+  }
+  isDiffMode.value = !isDiffMode.value
+}
+
+onMounted(async () => {
+  monacoEditor = await createEditor()
   monacoEditor.onDidPaste(() => {
     setTimeout(() => {
       formatJson()
     }, 100)
   })
-
-  // Handle window resize
   window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
-  // Clean up
   if (monacoEditor) {
     monacoEditor.dispose()
+  }
+  if (diffEditor) {
+    diffEditor.dispose()
   }
   window.removeEventListener('resize', handleResize)
 })
@@ -97,13 +194,30 @@ const handleResize = () => {
   if (monacoEditor) {
     monacoEditor.layout()
   }
+  if (diffEditor) {
+    diffEditor.layout()
+  }
 }
 
-const formatJson = () => {
+const formatJson = async () => {
   try {
-    const json = JSON.parse(monacoEditor.getValue())
-    const formatted = JSON.stringify(json, null, 4)
-    monacoEditor.setValue(formatted)
+    if (isDiffMode.value) {
+      const originalValue = diffEditor.getOriginalEditor().getValue()
+      const modifiedValue = diffEditor.getModifiedEditor().getValue()
+      
+      const originalJson = JSON.parse(originalValue)
+      const modifiedJson = JSON.parse(modifiedValue)
+      
+      const formattedOriginal = JSON.stringify(originalJson, null, 4)
+      const formattedModified = JSON.stringify(modifiedJson, null, 4)
+      
+      diffEditor.getOriginalEditor().setValue(formattedOriginal)
+      diffEditor.getModifiedEditor().setValue(formattedModified)
+    } else {
+      const json = JSON.parse(monacoEditor.getValue())
+      const formatted = JSON.stringify(json, null, 4)
+      monacoEditor.setValue(formatted)
+    }
   } catch (error) {
     if (!error.message.includes('paste')) {
       showToast('Invalid JSON: ' + error.message, 'error')
@@ -113,7 +227,10 @@ const formatJson = () => {
 
 const copyContent = async () => {
   try {
-    await navigator.clipboard.writeText(monacoEditor.getValue())
+    const content = isDiffMode.value 
+      ? diffEditor.getModifiedEditor().getValue()
+      : monacoEditor.getValue()
+    await navigator.clipboard.writeText(content)
     showToast('Content copied to clipboard!')
   } catch (error) {
     showToast('Failed to copy: ' + error.message, 'error')
@@ -122,7 +239,10 @@ const copyContent = async () => {
 
 const copyMinified = async () => {
   try {
-    const json = JSON.parse(monacoEditor.getValue())
+    const content = isDiffMode.value 
+      ? diffEditor.getModifiedEditor().getValue()
+      : monacoEditor.getValue()
+    const json = JSON.parse(content)
     const minified = JSON.stringify(json)
     await navigator.clipboard.writeText(minified)
     showToast('Minified JSON copied to clipboard!')
@@ -362,5 +482,23 @@ button:active {
   header {
     flex-direction: column;
   }
+}
+
+.diff-btn {
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+}
+
+.diff-btn:hover {
+  background-color: #3d3d3d;
+}
+
+.diff-btn.active {
+  background-color: #0e639c;
+  border-color: #1177bb;
+}
+
+.diff-btn.active:hover {
+  background-color: #1177bb;
 }
 </style>
