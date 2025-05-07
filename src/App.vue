@@ -97,7 +97,59 @@ const createEditor = async () => {
       useShadows: false,
       verticalScrollbarSize: 10,
       horizontalScrollbarSize: 10
-    }
+    },
+    actions: [
+      {
+        id: 'editor.action.selectAll',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA],
+        label: 'Select All'
+      },
+      {
+        id: 'undo',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ],
+        label: 'Undo'
+      },
+      {
+        id: 'redo',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ],
+        label: 'Redo'
+      },
+      {
+        id: 'editor.action.copyLinesUpAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowUp],
+        label: 'Copy Line Up'
+      },
+      {
+        id: 'editor.action.copyLinesDownAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowDown],
+        label: 'Copy Line Down'
+      },
+      {
+        id: 'editor.action.moveLinesUpAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
+        label: 'Move Line Up'
+      },
+      {
+        id: 'editor.action.moveLinesDownAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
+        label: 'Move Line Down'
+      },
+      {
+        id: 'editor.action.deleteLines',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK],
+        label: 'Delete Line'
+      },
+      {
+        id: 'editor.action.insertCursorAbove',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
+        label: 'Add Cursor Above'
+      },
+      {
+        id: 'editor.action.insertCursorBelow',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
+        label: 'Add Cursor Below'
+      }
+    ]
   })
 }
 
@@ -135,7 +187,59 @@ const createDiffEditor = async () => {
       useShadows: false,
       verticalScrollbarSize: 10,
       horizontalScrollbarSize: 10
-    }
+    },
+    actions: [
+      {
+        id: 'editor.action.selectAll',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA],
+        label: 'Select All'
+      },
+      {
+        id: 'undo',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ],
+        label: 'Undo'
+      },
+      {
+        id: 'redo',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ],
+        label: 'Redo'
+      },
+      {
+        id: 'editor.action.copyLinesUpAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowUp],
+        label: 'Copy Line Up'
+      },
+      {
+        id: 'editor.action.copyLinesDownAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowDown],
+        label: 'Copy Line Down'
+      },
+      {
+        id: 'editor.action.moveLinesUpAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
+        label: 'Move Line Up'
+      },
+      {
+        id: 'editor.action.moveLinesDownAction',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
+        label: 'Move Line Down'
+      },
+      {
+        id: 'editor.action.deleteLines',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK],
+        label: 'Delete Line'
+      },
+      {
+        id: 'editor.action.insertCursorAbove',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
+        label: 'Add Cursor Above'
+      },
+      {
+        id: 'editor.action.insertCursorBelow',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
+        label: 'Add Cursor Below'
+      }
+    ]
   })
 }
 
