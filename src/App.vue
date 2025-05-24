@@ -315,12 +315,24 @@ const formatJson = async () => {
       const formattedOriginal = JSON.stringify(originalJson, null, 4)
       const formattedModified = JSON.stringify(modifiedJson, null, 4)
       
-      diffEditor.getOriginalEditor().setValue(formattedOriginal)
-      diffEditor.getModifiedEditor().setValue(formattedModified)
+      diffEditor.getOriginalEditor().executeEdits('format', [{
+        range: diffEditor.getOriginalEditor().getModel().getFullModelRange(),
+        text: formattedOriginal,
+        forceMoveMarkers: true
+      }])
+      diffEditor.getModifiedEditor().executeEdits('format', [{
+        range: diffEditor.getModifiedEditor().getModel().getFullModelRange(),
+        text: formattedModified,
+        forceMoveMarkers: true
+      }])
     } else {
       const json = JSON.parse(monacoEditor.getValue())
       const formatted = JSON.stringify(json, null, 4)
-      monacoEditor.setValue(formatted)
+      monacoEditor.executeEdits('format', [{
+        range: monacoEditor.getModel().getFullModelRange(),
+        text: formatted,
+        forceMoveMarkers: true
+      }])
     }
   } catch (error) {
     if (!error.message.includes('paste')) {
