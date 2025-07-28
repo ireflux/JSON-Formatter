@@ -1,23 +1,23 @@
 <template>
   <div class="app">
     <header>
-      <h1>JSON Formatter</h1>
-      <div class="header-buttons">
-        <button @click="copyContent" class="copy-btn">
-          <span class="button-content">Copy</span>
-        </button>
-        <button @click="copyMinified" class="compress-copy-btn">
-          <span class="button-content">Compress & Copy</span>
-        </button>
-        <button @click="toggleDiffMode" class="diff-btn" :class="{ active: isDiffMode }">
-          <span class="button-content">{{ isDiffMode ? 'Exit Diff' : 'Compare' }}</span>
-        </button>
-      </div>
       <a href="https://github.com/ireflux/JSON-Formatter" target="_blank" class="github-link" title="View on GitHub">
         <svg height="24" width="24" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
         </svg>
       </a>
+      <h1>JSON Formatter</h1>
+      <div class="header-buttons">
+        <button @click="copyContent" class="copy-btn" :disabled="!canCopy">
+          <span class="button-content">{{ isCopying ? 'Copying...' : 'Copy' }}</span>
+        </button>
+        <button @click="copyMinified" class="compress-copy-btn" :disabled="!canCopy">
+          <span class="button-content">{{ isCompressing ? 'Compressing...' : 'Compress & Copy' }}</span>
+        </button>
+        <button @click="toggleDiffMode" class="diff-btn" :class="{ active: isDiffMode }" :disabled="isLoading">
+          <span class="button-content">{{ isDiffMode ? 'Exit Diff' : 'Compare' }}</span>
+        </button>
+      </div>
     </header>
     <main>
       <div class="editor-container">
@@ -37,11 +37,18 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import loader from '@monaco-editor/loader'
+import { BASE_EDITOR_CONFIG, DIFF_EDITOR_CONFIG, DEFAULT_JSON_CONTENT } from './constants/editorConfig.js'
+import { debounce } from './utils/debounce.js'
+import { handleError } from './utils/errorHandling.js'
 
 const editor = ref(null)
 let monacoEditor = null
 let diffEditor = null
 const isDiffMode = ref(false)
+const isLoading = ref(false)
+const isCopying = ref(false)
+const isCompressing = ref(false)
+const canCopy = ref(true)
 const toast = ref({
   show: false,
   message: '',
@@ -62,189 +69,22 @@ const showToast = (message, type = 'success') => {
 const createEditor = async () => {
   const monaco = await loader.init()
   return monaco.editor.create(editor.value, {
-    value: '{\n  "example": "json"\n}',
-    language: 'json',
-    theme: 'vs-dark',
-    automaticLayout: true,
-    minimap: {
-      enabled: false
-    },
-    scrollBeyondLastLine: false,
-    fontSize: 14,
-    lineHeight: 20,
-    padding: {
-      top: 16,
-      bottom: 16
-    },
-    multiCursorModifier: 'alt',
-    wordWrap: 'on',
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    tabSize: 2,
-    insertSpaces: true,
-    autoClosingBrackets: 'always',
-    autoClosingQuotes: 'always',
-    autoSurround: 'brackets',
-    formatOnPaste: true,
-    formatOnType: true,
-    renderWhitespace: 'none',
-    renderControlCharacters: false,
-    renderIndentGuides: true,
-    renderLineHighlight: 'all',
-    scrollbar: {
-      vertical: 'visible',
-      horizontal: 'visible',
-      useShadows: false,
-      verticalScrollbarSize: 10,
-      horizontalScrollbarSize: 10
-    },
-    actions: [
-      {
-        id: 'editor.action.selectAll',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA],
-        label: 'Select All'
-      },
-      {
-        id: 'undo',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ],
-        label: 'Undo'
-      },
-      {
-        id: 'redo',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ],
-        label: 'Redo'
-      },
-      {
-        id: 'editor.action.copyLinesUpAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowUp],
-        label: 'Copy Line Up'
-      },
-      {
-        id: 'editor.action.copyLinesDownAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowDown],
-        label: 'Copy Line Down'
-      },
-      {
-        id: 'editor.action.moveLinesUpAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
-        label: 'Move Line Up'
-      },
-      {
-        id: 'editor.action.moveLinesDownAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
-        label: 'Move Line Down'
-      },
-      {
-        id: 'editor.action.deleteLines',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK],
-        label: 'Delete Line'
-      },
-      {
-        id: 'editor.action.insertCursorAbove',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
-        label: 'Add Cursor Above'
-      },
-      {
-        id: 'editor.action.insertCursorBelow',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
-        label: 'Add Cursor Below'
-      }
-    ]
+    ...BASE_EDITOR_CONFIG,
+    value: DEFAULT_JSON_CONTENT
   })
 }
 
 const createDiffEditor = async () => {
   const monaco = await loader.init()
-  return monaco.editor.createDiffEditor(editor.value, {
-    originalEditable: true,
-    readOnly: false,
-    automaticLayout: true,
-    theme: 'vs-dark',
-    fontSize: 14,
-    lineHeight: 20,
-    renderSideBySide: true,
-    minimap: {
-      enabled: false
-    },
-    multiCursorModifier: 'alt',
-    wordWrap: 'on',
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    tabSize: 2,
-    insertSpaces: true,
-    autoClosingBrackets: 'always',
-    autoClosingQuotes: 'always',
-    autoSurround: 'brackets',
-    formatOnPaste: true,
-    formatOnType: true,
-    renderWhitespace: 'none',
-    renderControlCharacters: false,
-    renderIndentGuides: true,
-    renderLineHighlight: 'all',
-    scrollbar: {
-      vertical: 'visible',
-      horizontal: 'visible',
-      useShadows: false,
-      verticalScrollbarSize: 10,
-      horizontalScrollbarSize: 10
-    },
-    actions: [
-      {
-        id: 'editor.action.selectAll',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA],
-        label: 'Select All'
-      },
-      {
-        id: 'undo',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ],
-        label: 'Undo'
-      },
-      {
-        id: 'redo',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ],
-        label: 'Redo'
-      },
-      {
-        id: 'editor.action.copyLinesUpAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowUp],
-        label: 'Copy Line Up'
-      },
-      {
-        id: 'editor.action.copyLinesDownAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.ArrowDown],
-        label: 'Copy Line Down'
-      },
-      {
-        id: 'editor.action.moveLinesUpAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
-        label: 'Move Line Up'
-      },
-      {
-        id: 'editor.action.moveLinesDownAction',
-        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
-        label: 'Move Line Down'
-      },
-      {
-        id: 'editor.action.deleteLines',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK],
-        label: 'Delete Line'
-      },
-      {
-        id: 'editor.action.insertCursorAbove',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowUp],
-        label: 'Add Cursor Above'
-      },
-      {
-        id: 'editor.action.insertCursorBelow',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.ArrowDown],
-        label: 'Add Cursor Below'
-      }
-    ]
-  })
+  return monaco.editor.createDiffEditor(editor.value, DIFF_EDITOR_CONFIG)
 }
 
 const toggleDiffMode = async () => {
+  if (isLoading.value) return
+  
+  isLoading.value = true
   const monaco = await loader.init()
+  
   if (isDiffMode.value) {
     // Switch back to normal editor
     if (diffEditor) {
@@ -259,7 +99,7 @@ const toggleDiffMode = async () => {
     })
   } else {
     // Switch to diff editor
-    let currentValue = '{\n  "example": "json"\n}'
+    let currentValue = DEFAULT_JSON_CONTENT
     if (monacoEditor) {
       currentValue = monacoEditor.getValue()
       monacoEditor.dispose()
@@ -272,16 +112,57 @@ const toggleDiffMode = async () => {
     })
   }
   isDiffMode.value = !isDiffMode.value
+  isLoading.value = false
+}
+
+// Keyboard shortcuts handler
+const handleKeyboardShortcuts = (event) => {
+  // Skip if user is typing in an input field
+  if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+    return
+  }
+  
+  // Ctrl/Cmd + Enter: Format JSON
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    formatJson()
+    return
+  }
+  
+  // Ctrl/Cmd + Shift + C: Copy minified
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'C') {
+    event.preventDefault()
+    copyMinified()
+    return
+  }
+  
+  // Ctrl/Cmd + D: Toggle diff mode
+  if ((event.ctrlKey || event.metaKey) && event.key === 'd') {
+    event.preventDefault()
+    toggleDiffMode()
+    return
+  }
 }
 
 onMounted(async () => {
-  monacoEditor = await createEditor()
-  monacoEditor.onDidPaste(() => {
-    setTimeout(() => {
-      formatJson()
-    }, 100)
-  })
+  isLoading.value = true
+  try {
+    monacoEditor = await createEditor()
+    monacoEditor.onDidPaste(() => {
+      setTimeout(() => {
+        debouncedFormatJson()
+      }, 100)
+    })
+  } catch (error) {
+    console.error('Failed to initialize editor:', error)
+    showToast('Failed to initialize editor', 'error')
+  } finally {
+    isLoading.value = false
+  }
+  
+  // Add event listeners
   window.addEventListener('resize', handleResize)
+  window.addEventListener('keydown', handleKeyboardShortcuts)
 })
 
 onBeforeUnmount(() => {
@@ -292,6 +173,7 @@ onBeforeUnmount(() => {
     diffEditor.dispose()
   }
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('keydown', handleKeyboardShortcuts)
 })
 
 const handleResize = () => {
@@ -305,7 +187,7 @@ const handleResize = () => {
 
 const formatJson = async () => {
   try {
-    if (isDiffMode.value) {
+    if (isDiffMode.value && diffEditor) {
       const originalValue = diffEditor.getOriginalEditor().getValue()
       const modifiedValue = diffEditor.getModifiedEditor().getValue()
       
@@ -325,7 +207,7 @@ const formatJson = async () => {
         text: formattedModified,
         forceMoveMarkers: true
       }])
-    } else {
+    } else if (monacoEditor) {
       const json = JSON.parse(monacoEditor.getValue())
       const formatted = JSON.stringify(json, null, 4)
       monacoEditor.executeEdits('format', [{
@@ -341,29 +223,74 @@ const formatJson = async () => {
   }
 }
 
-const copyContent = async () => {
+// Create debounced version of formatJson for better performance
+const debouncedFormatJson = debounce(formatJson, 300)
+
+// Helper function to get current editor content
+const getCurrentEditorContent = () => {
+  return isDiffMode.value 
+    ? diffEditor.getModifiedEditor().getValue()
+    : monacoEditor.getValue()
+}
+
+// Helper function to copy text with fallback
+const copyToClipboard = async (text) => {
   try {
-    const content = isDiffMode.value 
-      ? diffEditor.getModifiedEditor().getValue()
-      : monacoEditor.getValue()
-    await navigator.clipboard.writeText(content)
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch (error) {
+    // Fallback for older browsers
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      textarea.setAttribute('readonly', '')
+      
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      return true
+    } catch (fallbackError) {
+      throw error
+    }
+  }
+}
+
+const copyContent = async () => {
+  if (isCopying.value || !canCopy.value) return
+  
+  isCopying.value = true
+  try {
+    const content = getCurrentEditorContent()
+    await copyToClipboard(content)
     showToast('Content copied to clipboard!')
   } catch (error) {
     showToast('Failed to copy: ' + error.message, 'error')
+  } finally {
+    isCopying.value = false
   }
 }
 
 const copyMinified = async () => {
+  if (isCompressing.value || !canCopy.value) return
+  
+  isCompressing.value = true
   try {
-    const content = isDiffMode.value 
-      ? diffEditor.getModifiedEditor().getValue()
-      : monacoEditor.getValue()
+    const content = getCurrentEditorContent()
     const json = JSON.parse(content)
     const minified = JSON.stringify(json)
-    await navigator.clipboard.writeText(minified)
+    await copyToClipboard(minified)
     showToast('Minified JSON copied to clipboard!')
   } catch (error) {
-    showToast('Invalid JSON: ' + error.message, 'error')
+    if (error.name === 'SyntaxError') {
+      showToast('Invalid JSON: ' + error.message, 'error')
+    } else {
+      showToast('Failed to copy: ' + error.message, 'error')
+    }
+  } finally {
+    isCompressing.value = false
   }
 }
 </script>
@@ -374,19 +301,19 @@ const copyMinified = async () => {
   margin: 0;
   padding: 0;
   height: 100vh;
-  background-color: #1e1e1e;
-  color: #fff;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
 }
 
 header {
   text-align: center;
-  padding: 0.75rem 1.5rem;
+  padding: var(--space-md) var(--space-xl);
   position: relative;
-  background-color: #252526;
-  border-bottom: 1px solid #3c3c3c;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-md);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -395,9 +322,9 @@ header {
 
 h1 {
   margin: 0;
-  font-size: 1.75rem;
-  color: #fff;
-  font-weight: 600;
+  font-size: var(--font-size-2xl);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 1px;
   font-family: 'Playfair Display', serif;
   background: linear-gradient(45deg, #fff, #a8c0ff);
@@ -408,9 +335,9 @@ h1 {
 
 .header-buttons {
   position: absolute;
-  right: 1.5rem;
+  right: var(--space-xl);
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-md);
 }
 
 main {
@@ -420,21 +347,21 @@ main {
 
 .editor-container {
   height: 100%;
-  padding: 2rem;
+  padding: var(--space-2xl);
   display: flex;
   flex-direction: column;
 }
 
 .editor-wrapper {
   flex: 1;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow-lg);
+  transition: var(--transition-slow);
 }
 
 .editor-wrapper:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-xl);
 }
 
 .editor {
@@ -443,62 +370,67 @@ main {
 }
 
 button {
-  padding: 0.5rem 1.25rem;
+  padding: var(--space-sm) var(--space-lg);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-weight: 500;
-  font-size: 0.9rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background-color: #0e639c;
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+  transition: var(--transition-bounce);
+  background-color: var(--color-primary);
   color: white;
   position: relative;
   overflow: hidden;
 }
 
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .button-content {
   position: relative;
   z-index: 1;
-  transition: transform 0.2s ease;
+  transition: var(--transition-normal);
 }
 
-button:hover {
-  background-color: #1177bb;
+button:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-md);
 }
 
-button:active {
+button:active:not(:disabled) {
   transform: translateY(1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .copy-btn, .compress-copy-btn {
-  background-color: #0e639c;
+  background-color: var(--color-primary);
 }
 
-.copy-btn:hover, .compress-copy-btn:hover {
-  background-color: #1177bb;
+.copy-btn:hover:not(:disabled), .compress-copy-btn:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
 }
 
 .toast {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
-  padding: 12px 24px;
-  border-radius: 8px;
+  bottom: var(--space-xl);
+  right: var(--space-xl);
+  padding: var(--space-md) var(--space-xl);
+  border-radius: var(--radius-lg);
   color: white;
-  font-weight: 500;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-weight: var(--font-weight-medium);
+  z-index: var(--z-toast);
+  box-shadow: var(--shadow-lg);
 }
 
 .toast.success {
-  background-color: #4CAF50;
+  background-color: var(--color-success);
 }
 
 .toast.error {
-  background-color: #f44336;
+  background-color: var(--color-error);
 }
 
 /* Fade transition */
@@ -535,6 +467,7 @@ button:active {
   
   header {
     padding: 1rem;
+    flex-direction: column;
   }
   
   h1 {
@@ -571,10 +504,10 @@ button:active {
 
 .github-link {
   position: absolute;
-  left: 1.5rem;
-  color: #fff;
+  left: var(--space-xl);
+  color: var(--text-primary);
   opacity: 0.7;
-  transition: all 0.2s ease;
+  transition: var(--transition-normal);
   display: flex;
   align-items: center;
 }
@@ -592,29 +525,34 @@ button:active {
 @media (max-width: 767px) {
   .github-link {
     position: static;
-    margin-top: 0.5rem;
+    margin-bottom: var(--space-sm);
+    order: 3;
   }
   
-  header {
-    flex-direction: column;
+  .header-buttons {
+    order: 2;
+  }
+  
+  h1 {
+    order: 1;
   }
 }
 
 .diff-btn {
-  background-color: #2d2d2d;
-  border: 1px solid #3c3c3c;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
 }
 
-.diff-btn:hover {
-  background-color: #3d3d3d;
+.diff-btn:hover:not(:disabled) {
+  background-color: var(--bg-surface);
 }
 
 .diff-btn.active {
-  background-color: #0e639c;
-  border-color: #1177bb;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary-hover);
 }
 
-.diff-btn.active:hover {
-  background-color: #1177bb;
+.diff-btn.active:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
 }
 </style>
