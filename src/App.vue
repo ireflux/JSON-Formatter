@@ -37,6 +37,13 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import loader from '@monaco-editor/loader'
+import { configureMonacoLoader } from './utils/monacoLoader.js'
+
+try {
+  configureMonacoLoader(loader)
+} catch (e) {
+  console.warn('Failed to configure Monaco loader path in App.vue', e)
+}
 import { BASE_EDITOR_CONFIG, DIFF_EDITOR_CONFIG, DEFAULT_JSON_CONTENT } from './constants/editorConfig.js'
 import { debounce } from './utils/debounce.js'
 import { handleError } from './utils/errorHandling.js'

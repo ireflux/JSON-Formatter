@@ -5,6 +5,7 @@
 
 import { ref, onBeforeUnmount, nextTick } from 'vue'
 import loader from '@monaco-editor/loader'
+import { configureMonacoLoader } from '../utils/monacoLoader.js'
 import { 
   BASE_EDITOR_CONFIG, 
   DIFF_EDITOR_CONFIG, 
@@ -44,6 +45,12 @@ export function useMonacoEditor(options = {}) {
     }
     
     isLoading.value = true
+    // Configure loader path before initializing using shared util
+    try {
+      configureMonacoLoader(loader)
+    } catch (e) {
+      console.warn('Failed to configure Monaco loader', e)
+    }
     monacoInstance = await loader.init()
     isLoading.value = false
     isInitialized.value = true
