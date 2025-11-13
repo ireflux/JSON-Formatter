@@ -46,8 +46,6 @@ try {
   console.warn('Failed to configure Monaco loader path in App.vue', e)
 }
 import { BASE_EDITOR_CONFIG, DIFF_EDITOR_CONFIG, DEFAULT_JSON_CONTENT } from './constants/editorConfig.js'
-import { debounce } from './utils/debounce.js'
-import { handleError } from './utils/errorHandling.js'
 
 const normalEditor = ref(null)
 const diffEditorContainer = ref(null)
@@ -94,14 +92,10 @@ const toggleDiffMode = async () => {
   isLoading.value = true
   
   try {
-    const monaco = await loader.init()
-    
     if (isDiffMode.value) {
       // Exiting diff mode - copy content from diff to normal editor
       const currentValue = diffEditor.getModifiedEditor().getValue()
       monacoEditor.setValue(currentValue)
-      
-      // Just toggle visibility, don't dispose
       isDiffMode.value = false
       
       // Trigger layout after visibility change
@@ -118,7 +112,6 @@ const toggleDiffMode = async () => {
         model.modified.setValue(currentValue)
       }
       
-      // Just toggle visibility, don't dispose
       isDiffMode.value = true
       
       // Trigger layout after visibility change
@@ -173,9 +166,6 @@ onMounted(async () => {
       original: monaco.editor.createModel(DEFAULT_JSON_CONTENT, 'json'),
       modified: monaco.editor.createModel(DEFAULT_JSON_CONTENT, 'json')
     })
-    
-    // Removed auto-format on paste to allow editing duplicate keys
-    // Users can manually format with Ctrl/Cmd + Enter
   } catch (error) {
     console.error('Failed to initialize editor:', error)
     showToast('Failed to initialize editor', 'error')
@@ -252,9 +242,6 @@ const formatJson = async () => {
     }
   }
 }
-
-// Create debounced version of formatJson for better performance
-const debouncedFormatJson = debounce(formatJson, 300)
 
 // Helper function to get current editor content
 const getCurrentEditorContent = () => {
