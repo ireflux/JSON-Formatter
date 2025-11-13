@@ -27,7 +27,12 @@ export const BASE_EDITOR_CONFIG = {
   wordWrap: 'on',
   scrollBeyondLastLine: false,
   minimap: {
-    enabled: false
+    enabled: true,
+    side: 'right',
+    showSlider: 'mouseover',
+    renderCharacters: true,
+    maxColumn: 120,
+    scale: 1
   },
   padding: {
     top: 16,

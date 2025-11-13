@@ -99,11 +99,7 @@ const toggleDiffMode = async () => {
       diffEditor = null
     }
     monacoEditor = await createEditor()
-    monacoEditor.onDidPaste(() => {
-      setTimeout(() => {
-        formatJson()
-      }, 100)
-    })
+    // Removed auto-format on paste in diff mode switch
   } else {
     // Switch to diff editor
     let currentValue = DEFAULT_JSON_CONTENT
@@ -155,11 +151,8 @@ onMounted(async () => {
   isLoading.value = true
   try {
     monacoEditor = await createEditor()
-    monacoEditor.onDidPaste(() => {
-      setTimeout(() => {
-        debouncedFormatJson()
-      }, 100)
-    })
+    // Removed auto-format on paste to allow editing duplicate keys
+    // Users can manually format with Ctrl/Cmd + Enter
   } catch (error) {
     console.error('Failed to initialize editor:', error)
     showToast('Failed to initialize editor', 'error')
@@ -215,13 +208,19 @@ const formatJson = async () => {
         forceMoveMarkers: true
       }])
     } else if (monacoEditor) {
-      const json = JSON.parse(monacoEditor.getValue())
+      const currentValue = monacoEditor.getValue()
+      const json = JSON.parse(currentValue)
       const formatted = JSON.stringify(json, null, 4)
-      monacoEditor.executeEdits('format', [{
-        range: monacoEditor.getModel().getFullModelRange(),
-        text: formatted,
-        forceMoveMarkers: true
-      }])
+      
+      // Only format if the content actually changed after parse/stringify
+      // This prevents losing duplicate keys during editing
+      if (formatted !== currentValue) {
+        monacoEditor.executeEdits('format', [{
+          range: monacoEditor.getModel().getFullModelRange(),
+          text: formatted,
+          forceMoveMarkers: true
+        }])
+      }
     }
   } catch (error) {
     if (!error.message.includes('paste')) {
