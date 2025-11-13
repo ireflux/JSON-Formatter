@@ -22,7 +22,8 @@
     <main>
       <div class="editor-container">
         <div class="editor-wrapper">
-          <div ref="editor" class="editor"></div>
+          <div ref="normalEditor" class="editor" :style="{ display: isDiffMode ? 'none' : 'block' }"></div>
+          <div ref="diffEditorContainer" class="editor" :style="{ display: isDiffMode ? 'block' : 'none' }"></div>
         </div>
       </div>
     </main>
@@ -35,7 +36,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import loader from '@monaco-editor/loader'
 import { configureMonacoLoader } from './utils/monacoLoader.js'
 
@@ -48,7 +49,8 @@ import { BASE_EDITOR_CONFIG, DIFF_EDITOR_CONFIG, DEFAULT_JSON_CONTENT } from './
 import { debounce } from './utils/debounce.js'
 import { handleError } from './utils/errorHandling.js'
 
-const editor = ref(null)
+const normalEditor = ref(null)
+const diffEditorContainer = ref(null)
 let monacoEditor = null
 let diffEditor = null
 const isDiffMode = ref(false)
@@ -73,49 +75,59 @@ const showToast = (message, type = 'success') => {
   }, 3000)
 }
 
-const createEditor = async () => {
+const createEditor = async (container, initialValue = DEFAULT_JSON_CONTENT) => {
   const monaco = await loader.init()
-  return monaco.editor.create(editor.value, {
+  return monaco.editor.create(container, {
     ...BASE_EDITOR_CONFIG,
-    value: DEFAULT_JSON_CONTENT
+    value: initialValue
   })
 }
 
-const createDiffEditor = async () => {
+const createDiffEditor = async (container) => {
   const monaco = await loader.init()
-  return monaco.editor.createDiffEditor(editor.value, DIFF_EDITOR_CONFIG)
+  return monaco.editor.createDiffEditor(container, DIFF_EDITOR_CONFIG)
 }
 
 const toggleDiffMode = async () => {
   if (isLoading.value) return
   
   isLoading.value = true
-  const monaco = await loader.init()
   
-  if (isDiffMode.value) {
-    // Switch back to normal editor
-    if (diffEditor) {
-      diffEditor.dispose()
-      diffEditor = null
+  try {
+    const monaco = await loader.init()
+    
+    if (isDiffMode.value) {
+      // Exiting diff mode - copy content from diff to normal editor
+      const currentValue = diffEditor.getModifiedEditor().getValue()
+      monacoEditor.setValue(currentValue)
+      
+      // Just toggle visibility, don't dispose
+      isDiffMode.value = false
+      
+      // Trigger layout after visibility change
+      await nextTick()
+      monacoEditor.layout()
+    } else {
+      // Entering diff mode - copy content from normal to diff editor
+      const currentValue = monacoEditor.getValue()
+      
+      // Set both sides of diff editor to current content
+      const model = diffEditor.getModel()
+      if (model && model.original && model.modified) {
+        model.original.setValue(currentValue)
+        model.modified.setValue(currentValue)
+      }
+      
+      // Just toggle visibility, don't dispose
+      isDiffMode.value = true
+      
+      // Trigger layout after visibility change
+      await nextTick()
+      diffEditor.layout()
     }
-    monacoEditor = await createEditor()
-    // Removed auto-format on paste in diff mode switch
-  } else {
-    // Switch to diff editor
-    let currentValue = DEFAULT_JSON_CONTENT
-    if (monacoEditor) {
-      currentValue = monacoEditor.getValue()
-      monacoEditor.dispose()
-      monacoEditor = null
-    }
-    diffEditor = await createDiffEditor()
-    diffEditor.setModel({
-      original: monaco.editor.createModel(currentValue, 'json'),
-      modified: monaco.editor.createModel(currentValue, 'json')
-    })
+  } finally {
+    isLoading.value = false
   }
-  isDiffMode.value = !isDiffMode.value
-  isLoading.value = false
 }
 
 // Keyboard shortcuts handler
@@ -150,7 +162,18 @@ const handleKeyboardShortcuts = (event) => {
 onMounted(async () => {
   isLoading.value = true
   try {
-    monacoEditor = await createEditor()
+    const monaco = await loader.init()
+    
+    // Create both editors at startup
+    monacoEditor = await createEditor(normalEditor.value, DEFAULT_JSON_CONTENT)
+    diffEditor = await createDiffEditor(diffEditorContainer.value)
+    
+    // Initialize diff editor with default content
+    diffEditor.setModel({
+      original: monaco.editor.createModel(DEFAULT_JSON_CONTENT, 'json'),
+      modified: monaco.editor.createModel(DEFAULT_JSON_CONTENT, 'json')
+    })
+    
     // Removed auto-format on paste to allow editing duplicate keys
     // Users can manually format with Ctrl/Cmd + Enter
   } catch (error) {
@@ -166,6 +189,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  // Dispose both editors
   if (monacoEditor) {
     monacoEditor.dispose()
   }

@@ -9,8 +9,7 @@ import { configureMonacoLoader } from '../utils/monacoLoader.js'
 import { 
   BASE_EDITOR_CONFIG, 
   DIFF_EDITOR_CONFIG, 
-  DEFAULT_JSON_CONTENT,
-  EDITOR_KEYBINDINGS 
+  DEFAULT_JSON_CONTENT
 } from '../constants/editorConfig.js'
 import { handleError, createSafeAsyncWrapper } from '../utils/errorHandling.js'
 
@@ -77,9 +76,6 @@ export function useMonacoEditor(options = {}) {
     
     const editor = monaco.editor.create(container, editorConfig)
     
-    // Set up keybindings
-    setupKeybindings(monaco, editor)
-    
     // Set up event listeners
     setupEditorEventListeners(editor)
     
@@ -104,71 +100,11 @@ export function useMonacoEditor(options = {}) {
     
     const diffEditor = monaco.editor.createDiffEditor(container, editorConfig)
     
-    // Set up keybindings for both editors
-    setupKeybindings(monaco, diffEditor.getOriginalEditor())
-    setupKeybindings(monaco, diffEditor.getModifiedEditor())
-    
     // Set up event listeners
     setupDiffEditorEventListeners(diffEditor)
     
     return diffEditor
   }, 'diff-editor-creation', onError)
-  
-  /**
-   * Set up keyboard shortcuts for editor
-   * 
-   * @param {Object} monaco - Monaco instance
-   * @param {Object} editor - Editor instance
-   */
-  function setupKeybindings(monaco, editor) {
-    if (!monaco || !editor) return
-    
-    EDITOR_KEYBINDINGS.forEach(binding => {
-      try {
-        // Add keybinding based on the action ID
-        const keybinding = getKeybindingForAction(monaco, binding.id)
-        if (keybinding) {
-          editor.addAction({
-            id: binding.id,
-            label: binding.label,
-            keybindings: [keybinding],
-            run: () => {
-              editor.trigger('keyboard', binding.id, null)
-            }
-          })
-        }
-      } catch (error) {
-        console.warn(`Failed to set up keybinding for ${binding.id}:`, error)
-      }
-    })
-  }
-  
-  /**
-   * Get Monaco keybinding for action
-   * 
-   * @param {Object} monaco - Monaco instance
-   * @param {string} actionId - Action identifier
-   * @returns {number|null} Keybinding code
-   */
-  function getKeybindingForAction(monaco, actionId) {
-    const KeyMod = monaco.KeyMod
-    const KeyCode = monaco.KeyCode
-    
-    const keybindingMap = {
-      'editor.action.selectAll': KeyMod.CtrlCmd | KeyCode.KeyA,
-      'undo': KeyMod.CtrlCmd | KeyCode.KeyZ,
-      'redo': KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyZ,
-      'editor.action.copyLinesUpAction': KeyMod.Alt | KeyMod.Shift | KeyCode.ArrowUp,
-      'editor.action.copyLinesDownAction': KeyMod.Alt | KeyMod.Shift | KeyCode.ArrowDown,
-      'editor.action.moveLinesUpAction': KeyMod.Alt | KeyCode.ArrowUp,
-      'editor.action.moveLinesDownAction': KeyMod.Alt | KeyCode.ArrowDown,
-      'editor.action.deleteLines': KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyK,
-      'editor.action.insertCursorAbove': KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.ArrowUp,
-      'editor.action.insertCursorBelow': KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.ArrowDown
-    }
-    
-    return keybindingMap[actionId] || null
-  }
   
   /**
    * Set up event listeners for standard editor
@@ -259,7 +195,7 @@ export function useMonacoEditor(options = {}) {
     const container = editorContainer.value
     isDiffMode.value = !isDiffMode.value
     
-    // Clean up current editor
+    // Clean up current editor (including models)
     await cleanupCurrentEditor()
     
     // Wait for DOM update
@@ -378,6 +314,16 @@ export function useMonacoEditor(options = {}) {
         })
       }
       
+      // Dispose model before disposing editor
+      try {
+        const model = currentEditor.value.getModel()
+        if (model) {
+          model.dispose()
+        }
+      } catch (error) {
+        console.warn('Error disposing editor model:', error)
+      }
+      
       // Dispose editor
       try {
         currentEditor.value.dispose()
@@ -399,6 +345,21 @@ export function useMonacoEditor(options = {}) {
             console.warn('Error disposing diff editor listener:', error)
           }
         })
+      }
+      
+      // Dispose models before disposing diff editor
+      try {
+        const model = currentDiffEditor.value.getModel()
+        if (model) {
+          if (model.original) {
+            model.original.dispose()
+          }
+          if (model.modified) {
+            model.modified.dispose()
+          }
+        }
+      } catch (error) {
+        console.warn('Error disposing diff editor models:', error)
       }
       
       // Dispose diff editor
