@@ -25,6 +25,7 @@ export function useMonacoEditor(options = {}) {
   let diffEditor = null
   let normalContainer = null
   let diffContainer = null
+  let isMobileLayout = false
   let normalAutoFormatCleanup = null
   let diffOriginalAutoFormatCleanup = null
   let diffModifiedAutoFormatCleanup = null
@@ -40,6 +41,67 @@ export function useMonacoEditor(options = {}) {
 
     monaco = await loadMonaco()
     return monaco
+  }
+
+  const checkMobileLayout = () => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(max-width: 767px)').matches
+  }
+
+  const getResponsiveEditorOptions = () => {
+    const minimapConfig = isMobileLayout
+      ? {
+          enabled: false
+        }
+      : BASE_EDITOR_CONFIG.minimap
+
+    return {
+      ...BASE_EDITOR_CONFIG,
+      fontSize: isMobileLayout ? 13 : BASE_EDITOR_CONFIG.fontSize,
+      lineHeight: isMobileLayout ? 19 : BASE_EDITOR_CONFIG.lineHeight,
+      lineNumbers: isMobileLayout ? 'off' : 'on',
+      glyphMargin: !isMobileLayout,
+      folding: !isMobileLayout,
+      minimap: minimapConfig,
+      padding: isMobileLayout
+        ? {
+            top: 10,
+            bottom: 12
+          }
+        : BASE_EDITOR_CONFIG.padding,
+      scrollbar: {
+        ...BASE_EDITOR_CONFIG.scrollbar,
+        verticalScrollbarSize: isMobileLayout ? 8 : BASE_EDITOR_CONFIG.scrollbar.verticalScrollbarSize,
+        horizontalScrollbarSize: isMobileLayout ? 8 : BASE_EDITOR_CONFIG.scrollbar.horizontalScrollbarSize
+      }
+    }
+  }
+
+  const getResponsiveDiffOptions = () => ({
+    ...DIFF_EDITOR_CONFIG,
+    ...getResponsiveEditorOptions(),
+    renderSideBySide: !isMobileLayout
+  })
+
+  const applyResponsiveLayout = () => {
+    const nextMobileLayout = checkMobileLayout()
+    const shouldUpdate = nextMobileLayout !== isMobileLayout
+    isMobileLayout = nextMobileLayout
+
+    if (normalEditor && shouldUpdate) {
+      normalEditor.updateOptions(getResponsiveEditorOptions())
+    }
+
+    if (diffEditor) {
+      if (shouldUpdate) {
+        diffEditor.updateOptions(getResponsiveDiffOptions())
+      }
+      diffEditor.getOriginalEditor()?.updateOptions(getResponsiveEditorOptions())
+      diffEditor.getModifiedEditor()?.updateOptions(getResponsiveEditorOptions())
+    }
+
+    normalEditor?.layout()
+    diffEditor?.layout()
   }
 
   const runBuiltInFormatDocument = async (editor) => {
@@ -106,7 +168,7 @@ export function useMonacoEditor(options = {}) {
     disposeNormalEditor()
 
     normalEditor = monaco.editor.create(normalContainer, {
-      ...BASE_EDITOR_CONFIG,
+      ...getResponsiveEditorOptions(),
       value: initialValue
     })
     models.normal = normalEditor.getModel()
@@ -117,13 +179,15 @@ export function useMonacoEditor(options = {}) {
     if (!diffContainer || !monaco) return
 
     if (!diffEditor) {
-      diffEditor = monaco.editor.createDiffEditor(diffContainer, DIFF_EDITOR_CONFIG)
+      diffEditor = monaco.editor.createDiffEditor(diffContainer, getResponsiveDiffOptions())
       models.diffOriginal = monaco.editor.createModel(content, 'json')
       models.diffModified = monaco.editor.createModel(content, 'json')
       diffEditor.setModel({
         original: models.diffOriginal,
         modified: models.diffModified
       })
+      diffEditor.getOriginalEditor()?.updateOptions(getResponsiveEditorOptions())
+      diffEditor.getModifiedEditor()?.updateOptions(getResponsiveEditorOptions())
       diffOriginalAutoFormatCleanup = bindIdleAutoFormat(diffEditor.getOriginalEditor())
       diffModifiedAutoFormatCleanup = bindIdleAutoFormat(diffEditor.getModifiedEditor())
       return
@@ -149,7 +213,9 @@ export function useMonacoEditor(options = {}) {
       diffContainer = diffEditorContainer
 
       await initMonaco()
+      isMobileLayout = checkMobileLayout()
       createNormalEditor(initialValue)
+      applyResponsiveLayout()
       isInitialized.value = true
     } catch (error) {
       handleError(error, 'editor-initialization', onError)
@@ -209,8 +275,7 @@ export function useMonacoEditor(options = {}) {
   }
 
   const resize = () => {
-    normalEditor?.layout()
-    diffEditor?.layout()
+    applyResponsiveLayout()
   }
 
   const disposeNormalEditor = () => {

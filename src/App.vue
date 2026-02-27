@@ -415,10 +415,15 @@ button:disabled {
 
   .editor-container {
     padding: var(--space-md);
+    gap: var(--space-sm);
   }
 
   .shortcut-row {
     display: none;
+  }
+
+  .editor-wrapper {
+    min-height: 52vh;
   }
 
   .toast {
@@ -485,8 +490,6 @@ button:disabled {
 }
 
 .theme-btn {
-  width: 2.25rem;
-  height: 2.25rem;
   padding: 0;
   min-width: 2.25rem;
   display: inline-flex;
