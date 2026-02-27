@@ -1,22 +1,28 @@
 /*
- * Shared helper to configure @monaco-editor/loader paths based on environment.
+ * Shared helper to configure @monaco-editor/loader with lazily imported Monaco.
  */
 
-const DEFAULT_VERSION = '0.52.2'
+let isConfigured = false
 
 /**
- * Configure the provided @monaco-editor/loader instance with a preferred `vs` path.
- * This is synchronous and safe to call before loader.init().
+ * Configure the provided @monaco-editor/loader instance.
+ * Uses dynamic imports so Monaco is loaded only when editor is initialized.
  */
-function configureMonacoLoader(loaderInstance) {
-  if (!loaderInstance || typeof loaderInstance.config !== 'function') return
+async function configureMonacoLoader(loaderInstance) {
+  if (isConfigured || !loaderInstance || typeof loaderInstance.config !== 'function') return
+
   try {
-    const monacoEditorUrl = `https://unpkg.com/monaco-editor@${DEFAULT_VERSION}/min/vs`
-    loaderInstance.config({ paths: { vs: monacoEditorUrl } })
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api')
+    await import('monaco-editor/esm/vs/editor/contrib/contextmenu/browser/contextmenu')
+    await import('monaco-editor/esm/vs/editor/contrib/format/browser/formatActions')
+    await import('monaco-editor/esm/vs/language/json/monaco.contribution')
+
+    loaderInstance.config({ monaco })
+    isConfigured = true
   } catch (e) {
     // don't throw; let caller handle init errors
     // eslint-disable-next-line no-console
-    console.warn('monacoLoader: failed to configure loader path', e)
+    console.warn('monacoLoader: failed to configure loader', e)
   }
 }
 

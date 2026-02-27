@@ -1,405 +1,406 @@
 /**
  * Monaco Editor composable
- * Manages Monaco editor lifecycle, configuration, and operations
+ * Manages editor lifecycle, lazy diff initialization, custom context menu, and cleanup.
  */
 
-import { ref, onBeforeUnmount, nextTick } from 'vue'
-import loader from '@monaco-editor/loader'
+import { ref, onBeforeUnmount } from 'vue'
 import { configureMonacoLoader } from '../utils/monacoLoader.js'
-import { 
-  BASE_EDITOR_CONFIG, 
-  DIFF_EDITOR_CONFIG, 
-  DEFAULT_JSON_CONTENT
+import {
+  BASE_EDITOR_CONFIG,
+  DIFF_EDITOR_CONFIG,
+  DEFAULT_JSON_CONTENT,
+  JSON_FORMAT_CONFIG
 } from '../constants/editorConfig.js'
-import { handleError, createSafeAsyncWrapper } from '../utils/errorHandling.js'
+import { handleError } from '../utils/errorHandling.js'
 
-/**
- * Monaco Editor composable
- * 
- * @param {Object} options - Configuration options
- * @param {Function} options.onError - Error handler callback
- * @param {Function} options.onContentChange - Content change callback
- * @returns {Object} Editor management functions and state
- */
 export function useMonacoEditor(options = {}) {
-  const { onError, onContentChange } = options
-  
-  // Reactive state
+  const { onError } = options
+
   const isLoading = ref(false)
   const isInitialized = ref(false)
-  const currentEditor = ref(null)
-  const currentDiffEditor = ref(null)
   const isDiffMode = ref(false)
-  const editorContainer = ref(null)
-  
-  // Monaco instance cache
-  let monacoInstance = null
-  
-  /**
-   * Initialize Monaco Editor loader
-   */
-  const initializeMonaco = createSafeAsyncWrapper(async () => {
-    if (monacoInstance) {
-      return monacoInstance
+  const contextMenuState = ref({
+    visible: false,
+    x: 0,
+    y: 0
+  })
+
+  const contextMenuItems = [
+    { id: 'formatDocument', label: 'Format Document' },
+    { id: 'formatSelection', label: 'Format Selection' },
+    { id: 'copy', label: 'Copy' },
+    { id: 'cut', label: 'Cut' },
+    { id: 'paste', label: 'Paste' },
+    { id: 'rename', label: 'Rename Symbol' },
+    { id: 'goToBracket', label: 'Go to Bracket' },
+    { id: 'fold', label: 'Fold' },
+    { id: 'unfold', label: 'Unfold' },
+    { id: 'commandPalette', label: 'Command Palette' },
+    { id: 'copyAsJsonString', label: 'Copy as JSON String' }
+  ]
+
+  let monaco = null
+  let normalEditor = null
+  let diffEditor = null
+  let normalContainer = null
+  let diffContainer = null
+  let activeContextEditor = null
+  let normalContextMenuCleanup = null
+  let diffOriginalContextMenuCleanup = null
+  let diffModifiedContextMenuCleanup = null
+  let windowListenersBound = false
+
+  const models = {
+    normal: null,
+    diffOriginal: null,
+    diffModified: null
+  }
+
+  const hideContextMenu = () => {
+    contextMenuState.value.visible = false
+  }
+
+  const bindWindowListeners = () => {
+    if (windowListenersBound) return
+    windowListenersBound = true
+
+    window.addEventListener('click', hideContextMenu)
+    window.addEventListener('scroll', hideContextMenu, true)
+    window.addEventListener('resize', hideContextMenu)
+    window.addEventListener('keydown', handleWindowKeydown)
+  }
+
+  const unbindWindowListeners = () => {
+    if (!windowListenersBound) return
+    windowListenersBound = false
+
+    window.removeEventListener('click', hideContextMenu)
+    window.removeEventListener('scroll', hideContextMenu, true)
+    window.removeEventListener('resize', hideContextMenu)
+    window.removeEventListener('keydown', handleWindowKeydown)
+  }
+
+  const handleWindowKeydown = (event) => {
+    if (event.key === 'Escape') {
+      hideContextMenu()
     }
-    
-    isLoading.value = true
-    // Configure loader path before initializing using shared util
-    try {
-      configureMonacoLoader(loader)
-    } catch (e) {
-      console.warn('Failed to configure Monaco loader', e)
+  }
+
+  const attachContextMenu = (editor) => {
+    if (!editor || !editor.getDomNode) return null
+
+    const domNode = editor.getDomNode()
+    if (!domNode) return null
+
+    const handler = (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      activeContextEditor = editor
+      contextMenuState.value = {
+        visible: true,
+        x: event.clientX,
+        y: event.clientY
+      }
     }
-    monacoInstance = await loader.init()
-    isLoading.value = false
-    isInitialized.value = true
-    
-    return monacoInstance
-  }, 'monaco-initialization', onError)
-  
-  /**
-   * Create a standard Monaco editor instance
-   * 
-   * @param {HTMLElement} container - DOM container element
-   * @param {Object} config - Editor configuration
-   * @returns {Object} Monaco editor instance
-   */
-  const createEditor = createSafeAsyncWrapper(async (container, config = {}) => {
-    const monaco = await initializeMonaco()
-    if (!monaco || !container) return null
-    
-    const editorConfig = {
+
+    domNode.addEventListener('contextmenu', handler)
+    return () => domNode.removeEventListener('contextmenu', handler)
+  }
+
+  const initMonaco = async () => {
+    if (monaco) return monaco
+
+    const { default: loader } = await import('@monaco-editor/loader')
+    await configureMonacoLoader(loader)
+    monaco = await loader.init()
+    return monaco
+  }
+
+  const createNormalEditor = (initialValue) => {
+    if (!normalContainer || !monaco) return
+
+    disposeNormalEditor()
+
+    normalEditor = monaco.editor.create(normalContainer, {
       ...BASE_EDITOR_CONFIG,
-      ...config,
-      value: config.value || DEFAULT_JSON_CONTENT
-    }
-    
-    const editor = monaco.editor.create(container, editorConfig)
-    
-    // Set up event listeners
-    setupEditorEventListeners(editor)
-    
-    return editor
-  }, 'editor-creation', onError)
-  
-  /**
-   * Create a diff editor instance
-   * 
-   * @param {HTMLElement} container - DOM container element
-   * @param {Object} config - Editor configuration
-   * @returns {Object} Monaco diff editor instance
-   */
-  const createDiffEditor = createSafeAsyncWrapper(async (container, config = {}) => {
-    const monaco = await initializeMonaco()
-    if (!monaco || !container) return null
-    
-    const editorConfig = {
-      ...DIFF_EDITOR_CONFIG,
-      ...config
-    }
-    
-    const diffEditor = monaco.editor.createDiffEditor(container, editorConfig)
-    
-    // Set up event listeners
-    setupDiffEditorEventListeners(diffEditor)
-    
-    return diffEditor
-  }, 'diff-editor-creation', onError)
-  
-  /**
-   * Set up event listeners for standard editor
-   * 
-   * @param {Object} editor - Editor instance
-   */
-  function setupEditorEventListeners(editor) {
-    if (!editor) return
-    
-    // Content change listener
-    const contentChangeDisposable = editor.onDidChangeModelContent(() => {
-      if (onContentChange) {
-        onContentChange(editor.getValue())
-      }
+      value: initialValue
     })
-    
-    // Store disposable for cleanup
-    if (!editor._customDisposables) {
-      editor._customDisposables = []
-    }
-    editor._customDisposables.push(contentChangeDisposable)
+    models.normal = normalEditor.getModel()
+    normalContextMenuCleanup = attachContextMenu(normalEditor)
   }
-  
-  /**
-   * Set up event listeners for diff editor
-   * 
-   * @param {Object} diffEditor - Diff editor instance
-   */
-  function setupDiffEditorEventListeners(diffEditor) {
-    if (!diffEditor) return
-    
-    const originalEditor = diffEditor.getOriginalEditor()
-    const modifiedEditor = diffEditor.getModifiedEditor()
-    
-    // Content change listeners
-    const originalChangeDisposable = originalEditor.onDidChangeModelContent(() => {
-      if (onContentChange) {
-        onContentChange(originalEditor.getValue(), 'original')
-      }
-    })
-    
-    const modifiedChangeDisposable = modifiedEditor.onDidChangeModelContent(() => {
-      if (onContentChange) {
-        onContentChange(modifiedEditor.getValue(), 'modified')
-      }
-    })
-    
-    // Store disposables for cleanup
-    if (!diffEditor._customDisposables) {
-      diffEditor._customDisposables = []
-    }
-    diffEditor._customDisposables.push(originalChangeDisposable, modifiedChangeDisposable)
-  }
-  
-  /**
-   * Initialize editor in the provided container
-   * 
-   * @param {HTMLElement} container - DOM container element
-   * @param {Object} config - Editor configuration
-   */
-  const initializeEditor = async (container, config = {}) => {
-    if (!container) {
-      handleError(new Error('Container element is required'), 'editor-initialization', onError)
+
+  const ensureDiffEditor = (content) => {
+    if (!diffContainer || !monaco) return
+
+    if (!diffEditor) {
+      diffEditor = monaco.editor.createDiffEditor(diffContainer, DIFF_EDITOR_CONFIG)
+      models.diffOriginal = monaco.editor.createModel(content, 'json')
+      models.diffModified = monaco.editor.createModel(content, 'json')
+      diffEditor.setModel({
+        original: models.diffOriginal,
+        modified: models.diffModified
+      })
+
+      diffOriginalContextMenuCleanup = attachContextMenu(diffEditor.getOriginalEditor())
+      diffModifiedContextMenuCleanup = attachContextMenu(diffEditor.getModifiedEditor())
       return
     }
-    
-    editorContainer.value = container
-    
-    // Clean up existing editor
-    await cleanupCurrentEditor()
-    
-    // Create new editor
-    if (isDiffMode.value) {
-      currentDiffEditor.value = await createDiffEditor(container, config)
-    } else {
-      currentEditor.value = await createEditor(container, config)
+
+    models.diffOriginal?.setValue(content)
+    models.diffModified?.setValue(content)
+  }
+
+  const initialize = async ({
+    normalEditorContainer,
+    diffEditorContainer,
+    initialValue = DEFAULT_JSON_CONTENT
+  }) => {
+    if (!normalEditorContainer || !diffEditorContainer) {
+      handleError(new Error('Editor containers are required'), 'editor-initialization', onError)
+      return
+    }
+
+    isLoading.value = true
+    try {
+      normalContainer = normalEditorContainer
+      diffContainer = diffEditorContainer
+
+      await initMonaco()
+      createNormalEditor(initialValue)
+      bindWindowListeners()
+      isInitialized.value = true
+    } catch (error) {
+      handleError(error, 'editor-initialization', onError)
+    } finally {
+      isLoading.value = false
     }
   }
-  
-  /**
-   * Toggle between normal and diff editor modes
-   * 
-   * @param {string} currentContent - Current editor content to preserve
-   */
-  const toggleDiffMode = async (currentContent = DEFAULT_JSON_CONTENT) => {
-    if (!editorContainer.value) return
-    
-    const container = editorContainer.value
-    isDiffMode.value = !isDiffMode.value
-    
-    // Clean up current editor (including models)
-    await cleanupCurrentEditor()
-    
-    // Wait for DOM update
-    await nextTick()
-    
-    if (isDiffMode.value) {
-      // Switch to diff editor
-      currentDiffEditor.value = await createDiffEditor(container)
-      
-      if (currentDiffEditor.value && monacoInstance) {
-        // Set models with current content
-        currentDiffEditor.value.setModel({
-          original: monacoInstance.editor.createModel(currentContent, 'json'),
-          modified: monacoInstance.editor.createModel(currentContent, 'json')
-        })
+
+  const getCurrentContent = () => {
+    if (isDiffMode.value && diffEditor) {
+      return diffEditor.getModifiedEditor().getValue()
+    }
+
+    return normalEditor?.getValue() ?? ''
+  }
+
+  const toggleDiffMode = async () => {
+    if (isLoading.value || !isInitialized.value) return
+
+    isLoading.value = true
+    try {
+      if (isDiffMode.value) {
+        const content = diffEditor?.getModifiedEditor().getValue() ?? ''
+        normalEditor?.setValue(content)
+        isDiffMode.value = false
+        normalEditor?.layout()
+        return
       }
-    } else {
-      // Switch to normal editor
-      currentEditor.value = await createEditor(container, {
-        value: currentContent
-      })
+
+      const currentValue = normalEditor?.getValue() ?? DEFAULT_JSON_CONTENT
+      ensureDiffEditor(currentValue)
+      isDiffMode.value = true
+      diffEditor?.layout()
+    } catch (error) {
+      handleError(error, 'diff-mode-toggle', onError)
+    } finally {
+      isLoading.value = false
     }
   }
-  
-  /**
-   * Get current editor content
-   * 
-   * @param {string} editorType - 'original', 'modified', or undefined for current
-   * @returns {string} Editor content
-   */
-  const getEditorContent = (editorType) => {
-    if (isDiffMode.value && currentDiffEditor.value) {
-      if (editorType === 'original') {
-        return currentDiffEditor.value.getOriginalEditor().getValue()
-      } else if (editorType === 'modified') {
-        return currentDiffEditor.value.getModifiedEditor().getValue()
+
+  const formatContent = async () => {
+    try {
+      if (isDiffMode.value && diffEditor) {
+        const originalValue = diffEditor.getOriginalEditor().getValue()
+        const modifiedValue = diffEditor.getModifiedEditor().getValue()
+
+        const formattedOriginal = JSON.stringify(JSON.parse(originalValue), null, JSON_FORMAT_CONFIG.INDENT_SIZE)
+        const formattedModified = JSON.stringify(JSON.parse(modifiedValue), null, JSON_FORMAT_CONFIG.INDENT_SIZE)
+
+        diffEditor.getOriginalEditor().executeEdits('format', [{
+          range: diffEditor.getOriginalEditor().getModel().getFullModelRange(),
+          text: formattedOriginal,
+          forceMoveMarkers: true
+        }])
+
+        diffEditor.getModifiedEditor().executeEdits('format', [{
+          range: diffEditor.getModifiedEditor().getModel().getFullModelRange(),
+          text: formattedModified,
+          forceMoveMarkers: true
+        }])
+
+        return formattedModified
       }
-      return currentDiffEditor.value.getModifiedEditor().getValue()
+
+      if (!normalEditor) return ''
+
+      const currentValue = normalEditor.getValue()
+      const formatted = JSON.stringify(JSON.parse(currentValue), null, JSON_FORMAT_CONFIG.INDENT_SIZE)
+
+      if (formatted !== currentValue) {
+        normalEditor.executeEdits('format', [{
+          range: normalEditor.getModel().getFullModelRange(),
+          text: formatted,
+          forceMoveMarkers: true
+        }])
+      }
+
+      return formatted
+    } catch (error) {
+      handleError(error, 'json-formatting', onError)
+      return null
     }
-    
-    if (currentEditor.value) {
-      return currentEditor.value.getValue()
-    }
-    
-    return ''
   }
-  
-  /**
-   * Set editor content
-   * 
-   * @param {string} content - Content to set
-   * @param {string} editorType - 'original', 'modified', or undefined for current
-   */
-  const setEditorContent = (content, editorType) => {
-    if (isDiffMode.value && currentDiffEditor.value) {
-      if (editorType === 'original') {
-        const editor = currentDiffEditor.value.getOriginalEditor()
-        editor.setValue(content)
-      } else if (editorType === 'modified') {
-        const editor = currentDiffEditor.value.getModifiedEditor()
-        editor.setValue(content)
+
+  const resize = () => {
+    normalEditor?.layout()
+    diffEditor?.layout()
+  }
+
+  const runActiveEditorAction = async (actionId) => {
+    if (!activeContextEditor) return
+    const action = activeContextEditor.getAction?.(actionId)
+    if (action) {
+      await action.run()
+    }
+  }
+
+  const fallbackCopy = (text) => {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.top = '-9999px'
+    textarea.setAttribute('readonly', '')
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }
+
+  const copyAsJsonString = async () => {
+    if (!activeContextEditor) return
+
+    const model = activeContextEditor.getModel?.()
+    if (!model) return
+
+    const selection = activeContextEditor.getSelection?.()
+    const selectedText = selection && !selection.isEmpty()
+      ? model.getValueInRange(selection)
+      : model.getValue()
+
+    const escaped = JSON.stringify(selectedText)
+    if (!escaped) return
+
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(escaped)
       } else {
-        // Set both editors
-        currentDiffEditor.value.getOriginalEditor().setValue(content)
-        currentDiffEditor.value.getModifiedEditor().setValue(content)
+        fallbackCopy(escaped)
       }
-    } else if (currentEditor.value) {
-      currentEditor.value.setValue(content)
+    } catch (error) {
+      handleError(error, 'context-menu-copy-json-string', onError)
     }
   }
-  
-  /**
-   * Format editor content
-   * 
-   * @param {string} editorType - 'original', 'modified', or undefined for current
-   */
-  const formatEditorContent = async (editorType) => {
-    if (isDiffMode.value && currentDiffEditor.value) {
-      if (editorType === 'original' || !editorType) {
-        await currentDiffEditor.value.getOriginalEditor().getAction('editor.action.formatDocument').run()
+
+  const executeContextMenuAction = async (actionId) => {
+    try {
+      switch (actionId) {
+        case 'formatDocument':
+          await runActiveEditorAction('editor.action.formatDocument')
+          break
+        case 'formatSelection':
+          await runActiveEditorAction('editor.action.formatSelection')
+          break
+        case 'copy':
+          await runActiveEditorAction('editor.action.clipboardCopyAction')
+          break
+        case 'cut':
+          await runActiveEditorAction('editor.action.clipboardCutAction')
+          break
+        case 'paste':
+          await runActiveEditorAction('editor.action.clipboardPasteAction')
+          break
+        case 'rename':
+          await runActiveEditorAction('editor.action.rename')
+          break
+        case 'goToBracket':
+          await runActiveEditorAction('editor.action.jumpToBracket')
+          break
+        case 'fold':
+          await runActiveEditorAction('editor.fold')
+          break
+        case 'unfold':
+          await runActiveEditorAction('editor.unfold')
+          break
+        case 'commandPalette':
+          await runActiveEditorAction('editor.action.quickCommand')
+          break
+        case 'copyAsJsonString':
+          await copyAsJsonString()
+          break
+        default:
+          break
       }
-      if (editorType === 'modified' || !editorType) {
-        await currentDiffEditor.value.getModifiedEditor().getAction('editor.action.formatDocument').run()
-      }
-    } else if (currentEditor.value) {
-      await currentEditor.value.getAction('editor.action.formatDocument').run()
+    } finally {
+      hideContextMenu()
     }
   }
-  
-  /**
-   * Resize editor to fit container
-   */
-  const resizeEditor = () => {
-    if (currentEditor.value) {
-      currentEditor.value.layout()
-    }
-    if (currentDiffEditor.value) {
-      currentDiffEditor.value.layout()
-    }
+
+  const disposeNormalEditor = () => {
+    normalContextMenuCleanup?.()
+    normalContextMenuCleanup = null
+
+    models.normal?.dispose()
+    models.normal = null
+    normalEditor?.dispose()
+    normalEditor = null
   }
-  
-  /**
-   * Clean up current editor instances
-   */
-  const cleanupCurrentEditor = async () => {
-    // Clean up standard editor
-    if (currentEditor.value) {
-      // Dispose custom event listeners
-      if (currentEditor.value._customDisposables) {
-        currentEditor.value._customDisposables.forEach(disposable => {
-          try {
-            disposable.dispose()
-          } catch (error) {
-            console.warn('Error disposing editor listener:', error)
-          }
-        })
-      }
-      
-      // Dispose model before disposing editor
-      try {
-        const model = currentEditor.value.getModel()
-        if (model) {
-          model.dispose()
-        }
-      } catch (error) {
-        console.warn('Error disposing editor model:', error)
-      }
-      
-      // Dispose editor
-      try {
-        currentEditor.value.dispose()
-      } catch (error) {
-        console.warn('Error disposing editor:', error)
-      }
-      
-      currentEditor.value = null
-    }
-    
-    // Clean up diff editor
-    if (currentDiffEditor.value) {
-      // Dispose custom event listeners
-      if (currentDiffEditor.value._customDisposables) {
-        currentDiffEditor.value._customDisposables.forEach(disposable => {
-          try {
-            disposable.dispose()
-          } catch (error) {
-            console.warn('Error disposing diff editor listener:', error)
-          }
-        })
-      }
-      
-      // Dispose models before disposing diff editor
-      try {
-        const model = currentDiffEditor.value.getModel()
-        if (model) {
-          if (model.original) {
-            model.original.dispose()
-          }
-          if (model.modified) {
-            model.modified.dispose()
-          }
-        }
-      } catch (error) {
-        console.warn('Error disposing diff editor models:', error)
-      }
-      
-      // Dispose diff editor
-      try {
-        currentDiffEditor.value.dispose()
-      } catch (error) {
-        console.warn('Error disposing diff editor:', error)
-      }
-      
-      currentDiffEditor.value = null
-    }
+
+  const disposeDiffEditor = () => {
+    diffOriginalContextMenuCleanup?.()
+    diffModifiedContextMenuCleanup?.()
+    diffOriginalContextMenuCleanup = null
+    diffModifiedContextMenuCleanup = null
+
+    diffEditor?.setModel(null)
+
+    models.diffOriginal?.dispose()
+    models.diffModified?.dispose()
+    models.diffOriginal = null
+    models.diffModified = null
+
+    diffEditor?.dispose()
+    diffEditor = null
   }
-  
-  /**
-   * Cleanup function for component unmount
-   */
-  const cleanup = async () => {
-    await cleanupCurrentEditor()
-    monacoInstance = null
+
+  const cleanup = () => {
+    hideContextMenu()
+    activeContextEditor = null
+    unbindWindowListeners()
+    disposeDiffEditor()
+    disposeNormalEditor()
+    monaco = null
     isInitialized.value = false
+    isDiffMode.value = false
   }
-  
-  // Cleanup on component unmount
+
   onBeforeUnmount(cleanup)
-  
+
   return {
-    // State
     isLoading,
     isInitialized,
     isDiffMode,
-    currentEditor,
-    currentDiffEditor,
-    
-    // Methods
-    initializeEditor,
+    contextMenuState,
+    contextMenuItems,
+    initialize,
     toggleDiffMode,
-    getEditorContent,
-    setEditorContent,
-    formatEditorContent,
-    resizeEditor,
+    hideContextMenu,
+    executeContextMenuAction,
+    getCurrentContent,
+    formatContent,
+    resize,
     cleanup
   }
 }

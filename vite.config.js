@@ -8,7 +8,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('monaco-editor') || id.includes('@monaco-editor/loader')) {
+            return 'monaco'
+          }
+        }
+      }
+    }
   },
   server: {
     port: 3000,

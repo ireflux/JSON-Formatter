@@ -1,24 +1,15 @@
 <template>
   <div class="app">
-    <header>
-      <a href="https://github.com/ireflux/JSON-Formatter" target="_blank" class="github-link" title="View on GitHub">
-        <svg height="24" width="24" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
-        </svg>
-      </a>
-      <h1>JSON Formatter</h1>
-      <div class="header-buttons">
-        <button @click="copyContent" class="copy-btn" :disabled="!canCopy">
-          <span class="button-content">{{ isCopying ? 'Copying...' : 'Copy' }}</span>
-        </button>
-        <button @click="copyMinified" class="compress-copy-btn" :disabled="!canCopy">
-          <span class="button-content">{{ isCompressing ? 'Compressing...' : 'Compress & Copy' }}</span>
-        </button>
-        <button @click="toggleDiffMode" class="diff-btn" :class="{ active: isDiffMode }" :disabled="isLoading">
-          <span class="button-content">{{ isDiffMode ? 'Exit Diff' : 'Compare' }}</span>
-        </button>
-      </div>
-    </header>
+    <AppHeader
+      :is-copying="isCopying"
+      :is-compressing="isCompressing"
+      :is-diff-mode="isDiffMode"
+      :can-copy="canCopy"
+      :is-busy="isBusy"
+      @copy="copyContent"
+      @compress="copyMinified"
+      @toggle-diff="toggleDiffMode"
+    />
     <main>
       <div class="editor-container">
         <div class="editor-wrapper">
@@ -27,289 +18,135 @@
         </div>
       </div>
     </main>
-    <transition name="fade">
-      <div v-if="toast.show" :class="['toast', toast.type]">
-        {{ toast.message }}
-      </div>
-    </transition>
+    <AppToast :toast="toast" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import loader from '@monaco-editor/loader'
-import { configureMonacoLoader } from './utils/monacoLoader.js'
-
-try {
-  configureMonacoLoader(loader)
-} catch (e) {
-  console.warn('Failed to configure Monaco loader path in App.vue', e)
-}
-import { BASE_EDITOR_CONFIG, DIFF_EDITOR_CONFIG, DEFAULT_JSON_CONTENT } from './constants/editorConfig.js'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import AppHeader from './components/AppHeader.vue'
+import AppToast from './components/AppToast.vue'
+import { DEFAULT_JSON_CONTENT } from './constants/editorConfig.js'
+import { useMonacoEditor } from './composables/useMonacoEditor.js'
+import { useJsonFormatter } from './composables/useJsonFormatter.js'
+import { useClipboard } from './composables/useClipboard.js'
+import { useInlineToast } from './composables/useInlineToast.js'
 
 const normalEditor = ref(null)
 const diffEditorContainer = ref(null)
-let monacoEditor = null
-let diffEditor = null
-const isDiffMode = ref(false)
-const isLoading = ref(false)
 const isCopying = ref(false)
 const isCompressing = ref(false)
-const canCopy = ref(true)
-const toast = ref({
-  show: false,
-  message: '',
-  type: 'success'
+
+const { toast, showToast, clearToast } = useInlineToast(3000)
+
+const handleAppError = (errorInfo) => {
+  showToast(errorInfo?.message || 'Unexpected error occurred', 'error')
+}
+
+const {
+  isLoading,
+  isInitialized,
+  isDiffMode,
+  initialize,
+  toggleDiffMode,
+  getCurrentContent,
+  formatContent,
+  resize,
+  cleanup
+} = useMonacoEditor({ onError: handleAppError })
+
+const { minifyJson } = useJsonFormatter({ onError: handleAppError })
+
+const { copyText } = useClipboard({
+  onError: handleAppError
 })
 
-const showToast = (message, type = 'success') => {
-  toast.value = {
-    show: true,
-    message,
-    type
-  }
-  setTimeout(() => {
-    toast.value.show = false
-  }, 3000)
-}
-
-const createEditor = async (container, initialValue = DEFAULT_JSON_CONTENT) => {
-  const monaco = await loader.init()
-  return monaco.editor.create(container, {
-    ...BASE_EDITOR_CONFIG,
-    value: initialValue
-  })
-}
-
-const createDiffEditor = async (container) => {
-  const monaco = await loader.init()
-  return monaco.editor.createDiffEditor(container, DIFF_EDITOR_CONFIG)
-}
-
-const toggleDiffMode = async () => {
-  if (isLoading.value) return
-  
-  isLoading.value = true
-  
-  try {
-    if (isDiffMode.value) {
-      // Exiting diff mode - copy content from diff to normal editor
-      const currentValue = diffEditor.getModifiedEditor().getValue()
-      monacoEditor.setValue(currentValue)
-      isDiffMode.value = false
-      
-      // Trigger layout after visibility change
-      await nextTick()
-      monacoEditor.layout()
-    } else {
-      // Entering diff mode - copy content from normal to diff editor
-      const currentValue = monacoEditor.getValue()
-      
-      // Set both sides of diff editor to current content
-      const model = diffEditor.getModel()
-      if (model && model.original && model.modified) {
-        model.original.setValue(currentValue)
-        model.modified.setValue(currentValue)
-      }
-      
-      isDiffMode.value = true
-      
-      // Trigger layout after visibility change
-      await nextTick()
-      diffEditor.layout()
-    }
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// Keyboard shortcuts handler
-const handleKeyboardShortcuts = (event) => {
-  // Skip if user is typing in an input field
-  if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-    return
-  }
-  
-  // Ctrl/Cmd + Enter: Format JSON
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-    event.preventDefault()
-    formatJson()
-    return
-  }
-  
-  // Ctrl/Cmd + Shift + C: Copy minified
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'C') {
-    event.preventDefault()
-    copyMinified()
-    return
-  }
-  
-  // Ctrl/Cmd + D: Toggle diff mode
-  if ((event.ctrlKey || event.metaKey) && event.key === 'd') {
-    event.preventDefault()
-    toggleDiffMode()
-    return
-  }
-}
-
-onMounted(async () => {
-  isLoading.value = true
-  try {
-    const monaco = await loader.init()
-    
-    // Create both editors at startup
-    monacoEditor = await createEditor(normalEditor.value, DEFAULT_JSON_CONTENT)
-    diffEditor = await createDiffEditor(diffEditorContainer.value)
-    
-    // Initialize diff editor with default content
-    diffEditor.setModel({
-      original: monaco.editor.createModel(DEFAULT_JSON_CONTENT, 'json'),
-      modified: monaco.editor.createModel(DEFAULT_JSON_CONTENT, 'json')
-    })
-  } catch (error) {
-    console.error('Failed to initialize editor:', error)
-    showToast('Failed to initialize editor', 'error')
-  } finally {
-    isLoading.value = false
-  }
-  
-  // Add event listeners
-  window.addEventListener('resize', handleResize)
-  window.addEventListener('keydown', handleKeyboardShortcuts)
-})
-
-onBeforeUnmount(() => {
-  // Dispose both editors
-  if (monacoEditor) {
-    monacoEditor.dispose()
-  }
-  if (diffEditor) {
-    diffEditor.dispose()
-  }
-  window.removeEventListener('resize', handleResize)
-  window.removeEventListener('keydown', handleKeyboardShortcuts)
-})
-
-const handleResize = () => {
-  if (monacoEditor) {
-    monacoEditor.layout()
-  }
-  if (diffEditor) {
-    diffEditor.layout()
-  }
-}
-
-const formatJson = async () => {
-  try {
-    if (isDiffMode.value && diffEditor) {
-      const originalValue = diffEditor.getOriginalEditor().getValue()
-      const modifiedValue = diffEditor.getModifiedEditor().getValue()
-      
-      const originalJson = JSON.parse(originalValue)
-      const modifiedJson = JSON.parse(modifiedValue)
-      
-      const formattedOriginal = JSON.stringify(originalJson, null, 4)
-      const formattedModified = JSON.stringify(modifiedJson, null, 4)
-      
-      diffEditor.getOriginalEditor().executeEdits('format', [{
-        range: diffEditor.getOriginalEditor().getModel().getFullModelRange(),
-        text: formattedOriginal,
-        forceMoveMarkers: true
-      }])
-      diffEditor.getModifiedEditor().executeEdits('format', [{
-        range: diffEditor.getModifiedEditor().getModel().getFullModelRange(),
-        text: formattedModified,
-        forceMoveMarkers: true
-      }])
-    } else if (monacoEditor) {
-      const currentValue = monacoEditor.getValue()
-      const json = JSON.parse(currentValue)
-      const formatted = JSON.stringify(json, null, 4)
-      
-      // Only format if the content actually changed after parse/stringify
-      // This prevents losing duplicate keys during editing
-      if (formatted !== currentValue) {
-        monacoEditor.executeEdits('format', [{
-          range: monacoEditor.getModel().getFullModelRange(),
-          text: formatted,
-          forceMoveMarkers: true
-        }])
-      }
-    }
-  } catch (error) {
-    if (!error.message.includes('paste')) {
-      showToast('Invalid JSON: ' + error.message, 'error')
-    }
-  }
-}
-
-// Helper function to get current editor content
-const getCurrentEditorContent = () => {
-  return isDiffMode.value 
-    ? diffEditor.getModifiedEditor().getValue()
-    : monacoEditor.getValue()
-}
-
-// Helper function to copy text with fallback
-const copyToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch (error) {
-    // Fallback for older browsers
-    try {
-      const textarea = document.createElement('textarea')
-      textarea.value = text
-      textarea.style.position = 'fixed'
-      textarea.style.left = '-9999px'
-      textarea.setAttribute('readonly', '')
-      
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-      return true
-    } catch (fallbackError) {
-      throw error
-    }
-  }
-}
+const canCopy = computed(() => isInitialized.value)
+const isBusy = computed(() => isLoading.value || isCopying.value || isCompressing.value)
 
 const copyContent = async () => {
-  if (isCopying.value || !canCopy.value) return
-  
+  if (isBusy.value || !canCopy.value) return
+
   isCopying.value = true
   try {
-    const content = getCurrentEditorContent()
-    await copyToClipboard(content)
-    showToast('Content copied to clipboard!')
-  } catch (error) {
-    showToast('Failed to copy: ' + error.message, 'error')
+    const copied = await copyText(getCurrentContent())
+    if (copied) {
+      showToast('Content copied to clipboard!')
+    } else {
+      showToast('Failed to copy content', 'error')
+    }
   } finally {
     isCopying.value = false
   }
 }
 
 const copyMinified = async () => {
-  if (isCompressing.value || !canCopy.value) return
-  
+  if (isBusy.value || !canCopy.value) return
+
   isCompressing.value = true
   try {
-    const content = getCurrentEditorContent()
-    const json = JSON.parse(content)
-    const minified = JSON.stringify(json)
-    await copyToClipboard(minified)
-    showToast('Minified JSON copied to clipboard!')
-  } catch (error) {
-    if (error.name === 'SyntaxError') {
-      showToast('Invalid JSON: ' + error.message, 'error')
+    const minified = await minifyJson(getCurrentContent())
+    if (!minified) return
+
+    const copied = await copyText(minified)
+    if (copied) {
+      showToast('Minified JSON copied to clipboard!')
     } else {
-      showToast('Failed to copy: ' + error.message, 'error')
+      showToast('Failed to copy minified JSON', 'error')
     }
   } finally {
     isCompressing.value = false
   }
 }
+
+const formatJson = async () => {
+  const result = await formatContent()
+  if (result) {
+    showToast('JSON formatted successfully!')
+  }
+}
+
+const handleKeyboardShortcuts = (event) => {
+  const targetTag = event.target?.tagName
+  if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || event.target?.isContentEditable) {
+    return
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    formatJson()
+    return
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+    event.preventDefault()
+    copyMinified()
+    return
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+    event.preventDefault()
+    toggleDiffMode()
+  }
+}
+
+onMounted(async () => {
+  await initialize({
+    normalEditorContainer: normalEditor.value,
+    diffEditorContainer: diffEditorContainer.value,
+    initialValue: DEFAULT_JSON_CONTENT
+  })
+
+  window.addEventListener('resize', resize)
+  window.addEventListener('keydown', handleKeyboardShortcuts)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resize)
+  window.removeEventListener('keydown', handleKeyboardShortcuts)
+  clearToast()
+  cleanup()
+})
 </script>
 
 <style>

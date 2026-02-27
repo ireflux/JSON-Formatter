@@ -50,6 +50,7 @@ export const BASE_EDITOR_CONFIG = {
   renderControlCharacters: false,
   renderIndentGuides: true,
   renderLineHighlight: 'all',
+  contextmenu: true,
   scrollbar: {
     vertical: 'visible',
     horizontal: 'visible',
@@ -58,52 +59,6 @@ export const BASE_EDITOR_CONFIG = {
     horizontalScrollbarSize: 10
   }
 }
-
-/**
- * Keyboard shortcuts configuration for Monaco Editor
- */
-export const EDITOR_KEYBINDINGS = [
-  {
-    id: 'editor.action.selectAll',
-    label: 'Select All'
-  },
-  {
-    id: 'undo',
-    label: 'Undo'
-  },
-  {
-    id: 'redo',
-    label: 'Redo'
-  },
-  {
-    id: 'editor.action.copyLinesUpAction',
-    label: 'Copy Line Up'
-  },
-  {
-    id: 'editor.action.copyLinesDownAction',
-    label: 'Copy Line Down'
-  },
-  {
-    id: 'editor.action.moveLinesUpAction',
-    label: 'Move Line Up'
-  },
-  {
-    id: 'editor.action.moveLinesDownAction',
-    label: 'Move Line Down'
-  },
-  {
-    id: 'editor.action.deleteLines',
-    label: 'Delete Line'
-  },
-  {
-    id: 'editor.action.insertCursorAbove',
-    label: 'Add Cursor Above'
-  },
-  {
-    id: 'editor.action.insertCursorBelow',
-    label: 'Add Cursor Below'
-  }
-]
 
 /**
  * Configuration specific to diff editor
@@ -125,6 +80,5 @@ export const DEFAULT_JSON_CONTENT = '{\n  "example": "json"\n}'
  */
 export const JSON_FORMAT_CONFIG = {
   INDENT_SIZE: 4,
-  MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB limit
-  DEBOUNCE_DELAY: 300 // milliseconds
+  MAX_FILE_SIZE: 10 * 1024 * 1024 // 10MB limit
 }
