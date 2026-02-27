@@ -44,8 +44,8 @@ export const BASE_EDITOR_CONFIG = {
   autoClosingBrackets: 'always',
   autoClosingQuotes: 'always',
   autoSurround: 'brackets',
-  formatOnPaste: true,
-  formatOnType: true,
+  formatOnPaste: false,
+  formatOnType: false,
   renderWhitespace: 'none',
   renderControlCharacters: false,
   renderIndentGuides: true,
@@ -80,5 +80,6 @@ export const DEFAULT_JSON_CONTENT = '{\n  "example": "json"\n}'
  */
 export const JSON_FORMAT_CONFIG = {
   INDENT_SIZE: 4,
-  MAX_FILE_SIZE: 10 * 1024 * 1024 // 10MB limit
+  MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB limit
+  AUTO_FORMAT_DEBOUNCE_MS: 800
 }

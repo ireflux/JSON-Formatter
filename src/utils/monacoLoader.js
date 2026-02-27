@@ -1,29 +1,51 @@
 /*
- * Shared helper to configure @monaco-editor/loader with lazily imported Monaco.
+ * Monaco loader for Vite using ESM + web workers.
+ * Avoids CDN/AMD runtime coupling and keeps Monaco version aligned with package.json.
  */
 
-let isConfigured = false
+let monacoPromise = null
 
-/**
- * Configure the provided @monaco-editor/loader instance.
- * Uses dynamic imports so Monaco is loaded only when editor is initialized.
- */
-async function configureMonacoLoader(loaderInstance) {
-  if (isConfigured || !loaderInstance || typeof loaderInstance.config !== 'function') return
+async function loadMonaco() {
+  if (monacoPromise) return monacoPromise
 
-  try {
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api')
-    await import('monaco-editor/esm/vs/editor/contrib/contextmenu/browser/contextmenu')
-    await import('monaco-editor/esm/vs/editor/contrib/format/browser/formatActions')
-    await import('monaco-editor/esm/vs/language/json/monaco.contribution')
+  monacoPromise = (async () => {
+    try {
+      const monaco = await import('monaco-editor/esm/vs/editor/editor.api')
+      const { default: EditorWorker } = await import('monaco-editor/esm/vs/editor/editor.worker?worker')
+      const { default: JsonWorker } = await import('monaco-editor/esm/vs/language/json/json.worker?worker')
+      await import('monaco-editor/esm/vs/language/json/monaco.contribution')
 
-    loaderInstance.config({ monaco })
-    isConfigured = true
-  } catch (e) {
-    // don't throw; let caller handle init errors
-    // eslint-disable-next-line no-console
-    console.warn('monacoLoader: failed to configure loader', e)
-  }
+      globalThis.MonacoEnvironment = {
+        getWorker(_, label) {
+          if (label === 'json') {
+            return new JsonWorker()
+          }
+          return new EditorWorker()
+        }
+      }
+
+      monaco.languages?.json?.jsonDefaults?.setModeConfiguration?.({
+        documentFormattingEdits: true,
+        documentRangeFormattingEdits: true,
+        completionItems: true,
+        hovers: true,
+        documentSymbols: true,
+        tokens: true,
+        colors: true,
+        foldingRanges: true,
+        diagnostics: true,
+        selectionRanges: true
+      })
+
+      return monaco
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('monacoLoader: failed to initialize Monaco', e)
+      throw e
+    }
+  })()
+
+  return monacoPromise
 }
 
-export { configureMonacoLoader }
+export { loadMonaco }

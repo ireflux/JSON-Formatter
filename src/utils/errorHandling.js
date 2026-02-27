@@ -9,6 +9,7 @@
 export const ERROR_TYPES = {
   MONACO_INIT: 'monaco_init',
   JSON_PARSE: 'json_parse',
+  VALIDATION: 'validation',
   CLIPBOARD: 'clipboard',
   NETWORK: 'network',
   UNKNOWN: 'unknown'
@@ -32,19 +33,43 @@ export const ERROR_SEVERITY = {
  * @returns {string} The error type
  */
 export function getErrorType(error, context) {
-  if (context.includes('monaco') || context.includes('editor')) {
+  const normalizedContext = String(context || '').toLowerCase()
+  const errorName = String(error?.name || '')
+  const errorMessage = String(error?.message || '').toLowerCase()
+
+  if (
+    errorMessage.includes('file size exceeds limit') ||
+    errorMessage.includes('input must be a non-empty string') ||
+    errorMessage.includes('input must be a string')
+  ) {
+    return ERROR_TYPES.VALIDATION
+  }
+
+  if (normalizedContext.includes('monaco') || normalizedContext.includes('editor')) {
     return ERROR_TYPES.MONACO_INIT
   }
   
-  if (error.name === 'SyntaxError' || context.includes('json')) {
+  if (errorName === 'SyntaxError' || normalizedContext.includes('json')) {
     return ERROR_TYPES.JSON_PARSE
   }
   
-  if (context.includes('clipboard') || error.name === 'NotAllowedError') {
+  if (
+    normalizedContext.includes('clipboard') ||
+    errorName === 'NotAllowedError' ||
+    errorName === 'SecurityError'
+  ) {
     return ERROR_TYPES.CLIPBOARD
   }
   
-  if (error.name === 'NetworkError' || error.name === 'TypeError') {
+  if (
+    errorName === 'NetworkError' ||
+    errorName === 'AbortError' ||
+    errorName === 'TimeoutError' ||
+    errorMessage.includes('failed to fetch') ||
+    errorMessage.includes('network') ||
+    errorMessage.includes('cors') ||
+    errorMessage.includes('timed out')
+  ) {
     return ERROR_TYPES.NETWORK
   }
   
@@ -67,6 +92,9 @@ export function getUserFriendlyMessage(error, context) {
     
     case ERROR_TYPES.JSON_PARSE:
       return getJsonParseErrorMessage(error)
+
+    case ERROR_TYPES.VALIDATION:
+      return error.message || 'Invalid input. Please check your content and try again.'
     
     case ERROR_TYPES.CLIPBOARD:
       return 'Unable to access clipboard. Please copy the content manually or check your browser permissions.'
@@ -123,6 +151,9 @@ export function getErrorSeverity(error, context) {
       return ERROR_SEVERITY.CRITICAL
     
     case ERROR_TYPES.JSON_PARSE:
+      return ERROR_SEVERITY.LOW
+
+    case ERROR_TYPES.VALIDATION:
       return ERROR_SEVERITY.LOW
     
     case ERROR_TYPES.CLIPBOARD:

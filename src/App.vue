@@ -51,8 +51,7 @@ const {
   toggleDiffMode,
   getCurrentContent,
   formatContent,
-  resize,
-  cleanup
+  resize
 } = useMonacoEditor({ onError: handleAppError })
 
 const { minifyJson } = useJsonFormatter({ onError: handleAppError })
@@ -145,7 +144,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
   window.removeEventListener('keydown', handleKeyboardShortcuts)
   clearToast()
-  cleanup()
 })
 </script>
 

@@ -1,28 +1,16 @@
 import { JSON_FORMAT_CONFIG } from '../constants/editorConfig.js'
 import { createSafeAsyncWrapper } from '../utils/errorHandling.js'
+import { parseJsonString, minifyJsonData } from '../utils/jsonProcessing.js'
 
 export function useJsonFormatter(options = {}) {
   const { onError } = options
 
   const validateJson = (jsonString) => {
-    if (!jsonString || typeof jsonString !== 'string') {
-      return {
-        isValid: false,
-        error: new Error('Input must be a non-empty string'),
-        data: null
-      }
-    }
-
-    if (jsonString.length > JSON_FORMAT_CONFIG.MAX_FILE_SIZE) {
-      return {
-        isValid: false,
-        error: new Error(`File size exceeds limit of ${JSON_FORMAT_CONFIG.MAX_FILE_SIZE / (1024 * 1024)}MB`),
-        data: null
-      }
-    }
-
     try {
-      const parsed = JSON.parse(jsonString.trim())
+      const parsed = parseJsonString(jsonString, {
+        maxFileSize: JSON_FORMAT_CONFIG.MAX_FILE_SIZE,
+        requireNonEmpty: true
+      })
       return {
         isValid: true,
         error: null,
@@ -43,7 +31,7 @@ export function useJsonFormatter(options = {}) {
       throw validation.error
     }
 
-    return JSON.stringify(validation.data)
+    return minifyJsonData(validation.data)
   }, 'json-minification', onError)
 
   return {
