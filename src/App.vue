@@ -6,12 +6,19 @@
       :is-diff-mode="isDiffMode"
       :can-copy="canCopy"
       :is-busy="isBusy"
+      :is-light-theme="isLightTheme"
       @copy="copyContent"
       @compress="copyMinified"
       @toggle-diff="toggleDiffMode"
+      @toggle-theme="toggleTheme"
     />
     <main>
       <div class="editor-container">
+        <div class="shortcut-row" aria-label="Keyboard shortcuts">
+          <span class="shortcut-chip"><kbd>Ctrl/Cmd</kbd> + <kbd>Enter</kbd> Format</span>
+          <span class="shortcut-chip"><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> Minify & Copy</span>
+          <span class="shortcut-chip"><kbd>Ctrl/Cmd</kbd> + <kbd>D</kbd> Compare</span>
+        </div>
         <div class="editor-wrapper">
           <div ref="normalEditor" class="editor" :style="{ display: isDiffMode ? 'none' : 'block' }"></div>
           <div ref="diffEditorContainer" class="editor" :style="{ display: isDiffMode ? 'block' : 'none' }"></div>
@@ -36,6 +43,7 @@ const normalEditor = ref(null)
 const diffEditorContainer = ref(null)
 const isCopying = ref(false)
 const isCompressing = ref(false)
+const isLightTheme = ref(false)
 
 const { toast, showToast, clearToast } = useInlineToast(3000)
 
@@ -62,6 +70,28 @@ const { copyText } = useClipboard({
 
 const canCopy = computed(() => isInitialized.value)
 const isBusy = computed(() => isLoading.value || isCopying.value || isCompressing.value)
+const THEME_STORAGE_KEY = 'json-formatter-theme'
+
+const applyTheme = (isLight) => {
+  const theme = isLight ? 'light' : 'dark'
+  document.documentElement.setAttribute('data-theme', theme)
+}
+
+const initializeTheme = () => {
+  const storedTheme = localStorage.getItem(THEME_STORAGE_KEY)
+  if (storedTheme === 'light' || storedTheme === 'dark') {
+    isLightTheme.value = storedTheme === 'light'
+  } else {
+    isLightTheme.value = window.matchMedia('(prefers-color-scheme: light)').matches
+  }
+  applyTheme(isLightTheme.value)
+}
+
+const toggleTheme = () => {
+  isLightTheme.value = !isLightTheme.value
+  applyTheme(isLightTheme.value)
+  localStorage.setItem(THEME_STORAGE_KEY, isLightTheme.value ? 'light' : 'dark')
+}
 
 const copyContent = async () => {
   if (isBusy.value || !canCopy.value) return
@@ -130,6 +160,8 @@ const handleKeyboardShortcuts = (event) => {
 }
 
 onMounted(async () => {
+  initializeTheme()
+
   await initialize({
     normalEditorContainer: normalEditor.value,
     diffEditorContainer: diffEditorContainer.value,
@@ -149,71 +181,115 @@ onBeforeUnmount(() => {
 
 <style>
 .app {
-  max-width: 100%;
-  margin: 0;
-  padding: 0;
   height: 100vh;
-  background-color: var(--bg-primary);
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, var(--bg-accent-soft), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, var(--bg-accent-soft-2), transparent 50%),
+    var(--bg-primary);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
 }
 
-header {
-  text-align: center;
-  padding: var(--space-md) var(--space-xl);
-  position: relative;
+.app-header {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(320px, 1fr);
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-2xl);
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: blur(6px);
   flex-shrink: 0;
+}
+
+.header-left {
   display: flex;
   align-items: center;
-  justify-content: center;
+}
+
+.header-center {
+  text-align: center;
 }
 
 h1 {
   margin: 0;
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
   color: var(--text-primary);
   font-weight: var(--font-weight-semibold);
-  letter-spacing: 1px;
-  font-family: 'Playfair Display', serif;
-  background: linear-gradient(45deg, #fff, #a8c0ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  letter-spacing: 0.02em;
+  font-family: var(--font-family-display);
+}
+
+.header-subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
 }
 
 .header-buttons {
-  position: absolute;
-  right: var(--space-xl);
   display: flex;
-  gap: var(--space-md);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
 main {
   flex: 1;
   overflow: hidden;
+  min-height: 0;
+  display: flex;
 }
 
 .editor-container {
-  height: 100%;
-  padding: var(--space-2xl);
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-xl) var(--space-2xl) var(--space-2xl);
   display: flex;
   flex-direction: column;
+  gap: var(--space-md);
+}
+
+.shortcut-row {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.shortcut-chip {
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  background: var(--bg-chip);
+  border-radius: 999px;
+  padding: 0.3rem 0.6rem;
+  font-size: var(--font-size-xs);
+}
+
+kbd {
+  font-family: var(--font-family-mono);
+  border: 1px solid var(--border-secondary);
+  border-bottom-width: 2px;
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
 }
 
 .editor-wrapper {
   flex: 1;
-  border-radius: var(--radius-lg);
+  min-height: 0;
+  border-radius: var(--radius-xl);
   overflow: hidden;
+  border: 1px solid var(--border-primary);
   box-shadow: var(--shadow-lg);
-  transition: var(--transition-slow);
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
 }
 
 .editor-wrapper:hover {
   box-shadow: var(--shadow-xl);
+  border-color: var(--border-accent);
 }
 
 .editor {
@@ -222,59 +298,69 @@ main {
 }
 
 button {
-  padding: var(--space-sm) var(--space-lg);
-  border: none;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
-  transition: var(--transition-bounce);
-  background-color: var(--color-primary);
-  color: white;
-  position: relative;
-  overflow: hidden;
+  font-size: var(--font-size-xs);
+  transition: background-color var(--transition-normal), color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .button-content {
   position: relative;
-  z-index: 1;
-  transition: var(--transition-normal);
+  z-index: 2;
 }
 
-button:hover:not(:disabled) {
+.btn-primary {
+  background-color: var(--color-primary);
+  color: var(--text-on-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
-  transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-button:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: var(--shadow-sm);
+.btn-secondary {
+  background-color: var(--color-secondary-action);
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
 }
 
-.copy-btn, .compress-copy-btn {
-  background-color: var(--color-primary);
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-secondary-action-hover);
+  border-color: var(--border-accent);
 }
 
-.copy-btn:hover:not(:disabled), .compress-copy-btn:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
+.btn-ghost {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--border-primary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
 }
 
 .toast {
   position: fixed;
-  bottom: var(--space-xl);
+  bottom: var(--space-lg);
   right: var(--space-xl);
-  padding: var(--space-md) var(--space-xl);
+  padding: var(--space-sm) var(--space-lg);
   border-radius: var(--radius-lg);
   color: white;
   font-weight: var(--font-weight-medium);
   z-index: var(--z-toast);
   box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .toast.success {
@@ -299,112 +385,129 @@ button:active:not(:disabled) {
 
 /* Responsive design */
 @media (max-width: 1199px) and (min-width: 768px) {
-  .header-buttons {
-    right: 1.5rem;
+  .app-header {
+    grid-template-columns: 1fr;
+    text-align: center;
+    gap: var(--space-md);
   }
-  
-  button {
-    padding: 0.6rem 1.2rem;
-    font-size: 0.9rem;
+
+  .header-left,
+  .header-buttons {
+    justify-content: center;
   }
 }
 
 @media (max-width: 767px) {
+  .app-header {
+    grid-template-columns: 1fr;
+    padding: var(--space-md);
+    gap: var(--space-md);
+  }
+
+  .header-left,
   .header-buttons {
-    position: static;
-    transform: none;
     justify-content: center;
-    margin-top: 1rem;
   }
-  
-  header {
-    padding: 1rem;
-    flex-direction: column;
-  }
-  
-  h1 {
-    font-size: 1.3rem;
-  }
-  
+
   button {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
+    width: auto;
   }
-  
+
   .editor-container {
-    padding: 1rem;
+    padding: var(--space-md);
   }
-  
+
+  .shortcut-row {
+    display: none;
+  }
+
   .toast {
-    bottom: 16px;
-    right: 16px;
-    padding: 10px 20px;
-    font-size: 0.9rem;
+    top: var(--space-md);
+    right: var(--space-md);
+    left: var(--space-md);
+    bottom: auto;
+    text-align: center;
   }
 }
 
 @media (max-width: 480px) {
   .header-buttons {
-    flex-direction: column;
+    width: 100%;
+    justify-content: stretch;
     gap: 0.5rem;
   }
-  
+
   button {
-    width: 100%;
+    flex: 1;
   }
 }
 
 .github-link {
-  position: absolute;
-  left: var(--space-xl);
-  color: var(--text-primary);
-  opacity: 0.7;
-  transition: var(--transition-normal);
+  color: var(--text-secondary);
+  opacity: 1;
+  transition: color var(--transition-normal), border-color var(--transition-normal), background-color var(--transition-normal);
   display: flex;
   align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-chip);
+  padding: 0.4rem 0.75rem;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
 }
 
 .github-link:hover {
-  opacity: 1;
-  transform: translateY(-1px);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+  background: var(--bg-surface);
 }
 
 .github-link svg {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
 }
 
 @media (max-width: 767px) {
   .github-link {
-    position: static;
-    margin-bottom: var(--space-sm);
-    order: 3;
-  }
-  
-  .header-buttons {
-    order: 2;
-  }
-  
-  h1 {
-    order: 1;
+    margin-bottom: 0;
   }
 }
 
 .diff-btn {
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-}
-
-.diff-btn:hover:not(:disabled) {
-  background-color: var(--bg-surface);
+  min-width: 90px;
 }
 
 .diff-btn.active {
   background-color: var(--color-primary);
   border-color: var(--color-primary-hover);
+  color: var(--text-on-primary);
 }
 
-.diff-btn.active:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
+.theme-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  min-width: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+button:focus-visible,
+.github-link:focus-visible {
+  outline: 2px solid var(--border-accent);
+  outline-offset: 2px;
 }
 </style>
