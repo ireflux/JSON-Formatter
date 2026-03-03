@@ -25,6 +25,8 @@ export const BASE_EDITOR_CONFIG = {
   tabSize: 2,
   insertSpaces: true,
   wordWrap: 'on',
+  wordWrapOverride1: 'on',
+  wordWrapOverride2: 'on',
   scrollBeyondLastLine: false,
   minimap: {
     enabled: true,
