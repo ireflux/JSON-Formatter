@@ -67,7 +67,8 @@ export const DIFF_EDITOR_CONFIG = {
   ...BASE_EDITOR_CONFIG,
   originalEditable: true,
   readOnly: false,
-  renderSideBySide: true
+  renderSideBySide: true,
+  diffWordWrap: 'on'
 }
 
 /**
