@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/JSON-Formatter/',
+  base: process.env.BASE_PATH || '/',
   plugins: [vue()],
   build: {
     outDir: 'dist',
